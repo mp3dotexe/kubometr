@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"kubometr/internal/ai"
+	"kubometr/internal/history"
 	"kubometr/internal/state"
 	"strings"
 	"sync"
@@ -12,7 +13,7 @@ import (
 
 var ErrUnknownUserState = errors.New("unknown user state")
 
-type Service struct{
+type Service struct {
 	state           *state.StateManager
 	ai              *ai.Client
 	aiTimeout       time.Duration
@@ -21,31 +22,33 @@ type Service struct{
 	aiLimiter       chan struct{}
 	mu              sync.Mutex
 	lastAIRequest   map[int64]time.Time
+	history         *history.HistoryManager
 }
 
 func New(
-	state *state.StateManager, 
-	ai *ai.Client, 
-	aiTimeout time.Duration, 
-	aiRateLimit time.Duration, 
-	maxPromptLength int, 
+	state *state.StateManager,
+	ai *ai.Client,
+	aiTimeout time.Duration,
+	aiRateLimit time.Duration,
+	maxPromptLength int,
 	maxConcurrentAI int,
+	history *history.HistoryManager,
 ) *Service {
 	return &Service{
-		state: state,
-		ai: ai,
-		aiTimeout:	aiTimeout,
-		aiRateLimit: aiRateLimit,
+		state:           state,
+		ai:              ai,
+		aiTimeout:       aiTimeout,
+		aiRateLimit:     aiRateLimit,
 		maxPromptLength: maxPromptLength,
-		aiLimiter: make(chan struct{}, maxConcurrentAI),
-		lastAIRequest: make(map[int64]time.Time),
+		aiLimiter:       make(chan struct{}, maxConcurrentAI),
+		lastAIRequest:   make(map[int64]time.Time),
+		history:         history,
 	}
 }
 
-func (s *Service) Process(ctx context.Context, chatID int64, question string) (string, error){
-
+func (s *Service) Process(ctx context.Context, chatID int64, question string) (string, error) {
 	userState := s.state.Get(chatID)
-	
+
 	switch userState {
 	case state.StateIdle:
 		return "Сначала нажмите кнопку «💬 Консультация».", nil
@@ -71,20 +74,36 @@ func (s *Service) Process(ctx context.Context, chatID int64, question string) (s
 			return "Сейчас много запросов. Попробуйте еще раз через минуту.", nil
 		}
 
+		// Сохраняем сообщение пользователя
+		s.history.Add(chatID, history.Message{
+			Role: history.UserRole,
+			Text: question,
+			Time: time.Now(),
+		})
+
+		// Строим prompt из всей истории
+		prompt := buildPrompt(s.history.Get(chatID))
+
 		aiCtx, cancel := context.WithTimeout(ctx, s.aiTimeout)
 		defer cancel()
 
-		promt := buildPrompt(question)
-		
-		answer, err := s.ai.Ask(aiCtx, promt)	
-		if err != nil{
-			return  "", err
+		answer, err := s.ai.Ask(aiCtx, prompt)
+		if err != nil {
+			return "", err
 		}
-		 
+
 		answer = strings.TrimSpace(answer)
 		if answer == "" {
 			return "AI-консультант вернул пустой ответ. Попробуйте переформулировать вопрос.", nil
 		}
+
+		// Сохраняем ответ AI
+		s.history.Add(chatID, history.Message{
+			Role: history.AIRole,
+			Text: answer,
+			Time: time.Now(),
+		})
+
 		return answer, nil
 	}
 
@@ -108,10 +127,11 @@ func (s *Service) canAskAI(chatID int64, now time.Time) bool {
 	return true
 }
 
-func (s *Service) Start(chatID int64){
+func (s *Service) Start(chatID int64) {
 	s.state.Set(chatID, state.StateConsultation)
 }
 
-func (s *Service) Reset(chatID int64){
+func (s *Service) Reset(chatID int64) {
 	s.state.Delete(chatID)
+	s.history.Delete(chatID)
 }

@@ -8,13 +8,13 @@ import (
 )
 
 type Options struct {
-	Token           string
-	Consultation 	*consultation.Service
+	Token        string
+	Consultation *consultation.Service
 }
 
 type Telegram struct {
-	bot             *bot.Bot
-	consultation 	*consultation.Service
+	bot          *bot.Bot
+	consultation *consultation.Service
 }
 
 func New(opts Options) (*Telegram, error) {
@@ -24,7 +24,7 @@ func New(opts Options) (*Telegram, error) {
 	}
 
 	t := &Telegram{
-		bot:	b,
+		bot:          b,
 		consultation: opts.Consultation,
 	}
 	t.registerHandlers()

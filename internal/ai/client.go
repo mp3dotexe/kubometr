@@ -27,7 +27,7 @@ func New(apiKey, model string) (*Client, error) {
 }
 
 func (c *Client) Ask(ctx context.Context, prompt string) (string, error) {
-	
+
 	resp, err := c.client.Models.GenerateContent(
 		ctx,
 		c.model,

@@ -11,6 +11,7 @@ import (
 	"kubometr/internal/ai"
 	"kubometr/internal/config"
 	"kubometr/internal/consultation"
+	"kubometr/internal/history"
 	"kubometr/internal/logger"
 	"kubometr/internal/state"
 	"kubometr/internal/telegram"
@@ -28,20 +29,23 @@ func Run() error {
 
 	a, err := ai.New(cfg.GeminiAPIKey, cfg.GeminiModel)
 	if err != nil {
-		return err
+		return fmt.Errorf("create ai client: %w", err)
 	}
 
+	h := history.New()
+
 	cs := consultation.New(
-		s, 
-		a, 
-		cfg.AITimeout, 
-		cfg.AIRateLimit, 
-		cfg.MaxPromptLength, 
+		s,
+		a,
+		cfg.AITimeout,
+		cfg.AIRateLimit,
+		cfg.MaxPromptLength,
 		cfg.MaxConcurrentAI,
+		h,
 	)
-	
+
 	tg, err := telegram.New(telegram.Options{
-		Token:           cfg.BotToken,
+		Token:        cfg.BotToken,
 		Consultation: cs,
 	})
 	if err != nil {
