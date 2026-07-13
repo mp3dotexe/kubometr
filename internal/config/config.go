@@ -19,6 +19,12 @@ type Config struct {
 	AIRateLimit     time.Duration
 	MaxPromptLength int
 	MaxConcurrentAI int
+
+	PostgresHost     string
+	PostgresPort     int
+	PostgresUser     string
+	PostgresPassword string
+	PostgresDB       string
 }
 
 func Load() (Config, error) {
@@ -55,14 +61,44 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	host := os.Getenv("POSTGRES_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+
+	port, err := intFromEnv("POSTGRES_PORT", 5432)
+	if err != nil {
+		return Config{}, err
+	}
+
+	user := os.Getenv("POSTGRES_USER")
+	if user == "" {
+		return Config{}, errors.New("POSTGRES_USER is required")
+	}
+
+	password := os.Getenv("POSTGRES_PASSWORD")
+	if password == "" {
+		return Config{}, errors.New("POSTGRES_PASSWORD is required")
+	}
+
+	database := os.Getenv("POSTGRES_DB")
+	if database == "" {
+		return Config{}, errors.New("POSTGRES_DB is required")
+	}
+
 	return Config{
-		BotToken:        token,
-		GeminiAPIKey:    geminiAPIKey,
-		GeminiModel:     stringFromEnv("GEMINI_MODEL", "gemini-2.5-flash"),
-		AITimeout:       aiTimeout,
-		AIRateLimit:     aiRateLimit,
-		MaxPromptLength: maxPromptLength,
-		MaxConcurrentAI: maxConcurrentAI,
+		BotToken:         token,
+		GeminiAPIKey:     geminiAPIKey,
+		GeminiModel:      stringFromEnv("GEMINI_MODEL", "gemini-2.5-flash"),
+		AITimeout:        aiTimeout,
+		AIRateLimit:      aiRateLimit,
+		MaxPromptLength:  maxPromptLength,
+		MaxConcurrentAI:  maxConcurrentAI,
+		PostgresHost:     host,
+		PostgresPort:     port,
+		PostgresUser:     user,
+		PostgresPassword: password,
+		PostgresDB:       database,
 	}, nil
 }
 

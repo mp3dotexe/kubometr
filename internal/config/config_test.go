@@ -8,6 +8,9 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("BOT_TOKEN", " bot-token ")
 	t.Setenv("GEMINI_API_KEY", " gemini-key ")
+	t.Setenv("POSTGRES_USER", "postgres")
+	t.Setenv("POSTGRES_PASSWORD", "password")
+	t.Setenv("POSTGRES_DB", "kubometr_db")
 
 	cfg, err := Load()
 	if err != nil {
@@ -41,6 +44,9 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 	t.Setenv("BOT_TOKEN", "bot-token")
 	t.Setenv("GEMINI_API_KEY", "gemini-key")
 	t.Setenv("AI_TIMEOUT", "soon")
+	t.Setenv("POSTGRES_USER", "postgres")
+	t.Setenv("POSTGRES_PASSWORD", "password")
+	t.Setenv("POSTGRES_DB", "kubometr_db")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want error")

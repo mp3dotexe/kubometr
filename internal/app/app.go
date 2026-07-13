@@ -11,6 +11,7 @@ import (
 	"kubometr/internal/ai"
 	"kubometr/internal/config"
 	"kubometr/internal/consultation"
+	"kubometr/internal/database"
 	"kubometr/internal/history"
 	"kubometr/internal/logger"
 	"kubometr/internal/state"
@@ -24,6 +25,15 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := database.New(ctx, &cfg)
+	if err != nil {
+		return fmt.Errorf("create database pool: %w", err)
+	}
+	defer pool.Close()
 
 	s := state.New()
 
@@ -51,9 +61,6 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("create telegram bot: %w", err)
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	tg.Start(ctx)
 	return nil
