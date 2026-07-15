@@ -3,9 +3,11 @@ package consultation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"kubometr/internal/ai"
 	"kubometr/internal/history"
 	"kubometr/internal/state"
+	"kubometr/internal/users"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +25,7 @@ type Service struct {
 	mu              sync.Mutex
 	lastAIRequest   map[int64]time.Time
 	history         *history.HistoryManager
+	users           *users.Repository
 }
 
 func New(
@@ -33,6 +36,7 @@ func New(
 	maxPromptLength int,
 	maxConcurrentAI int,
 	history *history.HistoryManager,
+	users *users.Repository,
 ) *Service {
 	return &Service{
 		state:           state,
@@ -43,11 +47,17 @@ func New(
 		aiLimiter:       make(chan struct{}, maxConcurrentAI),
 		lastAIRequest:   make(map[int64]time.Time),
 		history:         history,
+		users:           users,
 	}
 }
 
 func (s *Service) Process(ctx context.Context, chatID int64, question string) (string, error) {
 	userState := s.state.Get(chatID)
+
+	_, err := s.users.GetOrCreate(ctx, chatID)
+	if err != nil {
+		return "", fmt.Errorf("get or create user: %w", err)
+	}
 
 	switch userState {
 	case state.StateIdle:

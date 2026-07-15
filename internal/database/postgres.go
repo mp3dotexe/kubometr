@@ -21,7 +21,7 @@ func New(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create pg pool: %w", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
@@ -29,5 +29,5 @@ func New(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	return pool, nil
+	return nil, fmt.Errorf("ping postgres: %w", err)
 }

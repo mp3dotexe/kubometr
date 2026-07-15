@@ -16,6 +16,7 @@ import (
 	"kubometr/internal/logger"
 	"kubometr/internal/state"
 	"kubometr/internal/telegram"
+	"kubometr/internal/users"
 )
 
 func Run() error {
@@ -44,6 +45,8 @@ func Run() error {
 
 	h := history.New()
 
+	usersRepo := users.New(pool)
+
 	cs := consultation.New(
 		s,
 		a,
@@ -52,6 +55,7 @@ func Run() error {
 		cfg.MaxPromptLength,
 		cfg.MaxConcurrentAI,
 		h,
+		usersRepo,
 	)
 
 	tg, err := telegram.New(telegram.Options{
