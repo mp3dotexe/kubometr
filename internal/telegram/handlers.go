@@ -22,7 +22,9 @@ func (t *Telegram) HandleStart(ctx context.Context, b *bot.Bot, update *models.U
 	}
 
 	chatID := update.Message.Chat.ID
-	t.consultation.Reset(chatID)
+	if err := t.consultation.Reset(ctx, chatID); err != nil {
+		slog.ErrorContext(ctx, "reset consultation", "chat_id", chatID, "error", err)
+	}
 
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: chatID,

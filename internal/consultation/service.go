@@ -15,6 +15,8 @@ import (
 
 var ErrUnknownUserState = errors.New("unknown user state")
 
+const historyLimit = 20
+
 type Service struct {
 	state           *state.StateManager
 	ai              *ai.Client
@@ -24,7 +26,7 @@ type Service struct {
 	aiLimiter       chan struct{}
 	mu              sync.Mutex
 	lastAIRequest   map[int64]time.Time
-	history         *history.HistoryManager
+	history         *history.Repository
 	users           *users.Repository
 }
 
@@ -35,7 +37,7 @@ func New(
 	aiRateLimit time.Duration,
 	maxPromptLength int,
 	maxConcurrentAI int,
-	history *history.HistoryManager,
+	history *history.Repository,
 	users *users.Repository,
 ) *Service {
 	return &Service{
@@ -54,7 +56,7 @@ func New(
 func (s *Service) Process(ctx context.Context, chatID int64, question string) (string, error) {
 	userState := s.state.Get(chatID)
 
-	_, err := s.users.GetOrCreate(ctx, chatID)
+	userID, err := s.users.GetOrCreate(ctx, chatID)
 	if err != nil {
 		return "", fmt.Errorf("get or create user: %w", err)
 	}
@@ -84,15 +86,15 @@ func (s *Service) Process(ctx context.Context, chatID int64, question string) (s
 			return "Сейчас много запросов. Попробуйте еще раз через минуту.", nil
 		}
 
-		// Сохраняем сообщение пользователя
-		s.history.Add(chatID, history.Message{
-			Role: history.UserRole,
-			Text: question,
-			Time: time.Now(),
-		})
+		if err := s.history.Save(ctx, userID, string(history.UserRole), question); err != nil {
+			return "", fmt.Errorf("save user message: %w", err)
+		}
 
-		// Строим prompt из всей истории
-		prompt := buildPrompt(s.history.Get(chatID))
+		messages, err := s.history.LoadHistory(ctx, userID, historyLimit)
+		if err != nil {
+			return "", fmt.Errorf("load history: %w", err)
+		}
+		prompt := buildPrompt(messages)
 
 		aiCtx, cancel := context.WithTimeout(ctx, s.aiTimeout)
 		defer cancel()
@@ -107,12 +109,9 @@ func (s *Service) Process(ctx context.Context, chatID int64, question string) (s
 			return "AI-консультант вернул пустой ответ. Попробуйте переформулировать вопрос.", nil
 		}
 
-		// Сохраняем ответ AI
-		s.history.Add(chatID, history.Message{
-			Role: history.AIRole,
-			Text: answer,
-			Time: time.Now(),
-		})
+		if err := s.history.Save(ctx, userID, string(history.AIRole), answer); err != nil {
+			return "", fmt.Errorf("save ai response: %w", err)
+		}
 
 		return answer, nil
 	}
@@ -141,7 +140,21 @@ func (s *Service) Start(chatID int64) {
 	s.state.Set(chatID, state.StateConsultation)
 }
 
-func (s *Service) Reset(chatID int64) {
+func (s *Service) Reset(ctx context.Context, chatID int64) error {
 	s.state.Delete(chatID)
-	s.history.Delete(chatID)
+
+	s.mu.Lock()
+	delete(s.lastAIRequest, chatID)
+	s.mu.Unlock()
+
+	userID, err := s.users.GetOrCreate(ctx, chatID)
+	if err != nil {
+		return fmt.Errorf("get or create user: %w", err)
+	}
+
+	if err := s.history.Delete(ctx, userID); err != nil {
+		return fmt.Errorf("delete history: %w", err)
+	}
+
+	return nil
 }

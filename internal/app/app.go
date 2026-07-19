@@ -30,7 +30,7 @@ func Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := database.New(ctx, &cfg)
+	pool, err := database.Connect(ctx, &cfg)
 	if err != nil {
 		return fmt.Errorf("create database pool: %w", err)
 	}
@@ -43,7 +43,7 @@ func Run() error {
 		return fmt.Errorf("create ai client: %w", err)
 	}
 
-	h := history.New()
+	h := history.New(pool)
 
 	usersRepo := users.New(pool)
 

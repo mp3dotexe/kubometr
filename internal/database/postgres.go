@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func New(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
+func Connect(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 	dsn := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s",
 		cfg.PostgresUser,
@@ -26,8 +26,8 @@ func New(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, err
+		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
-	return nil, fmt.Errorf("ping postgres: %w", err)
+	return pool, nil
 }
