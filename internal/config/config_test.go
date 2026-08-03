@@ -20,11 +20,11 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.BotToken != "bot-token" {
 		t.Fatalf("BotToken = %q", cfg.BotToken)
 	}
-	if cfg.GeminiAPIKey != "gemini-key" {
-		t.Fatalf("GeminiAPIKey = %q", cfg.GeminiAPIKey)
+	if cfg.AIAPIKey != "gemini-key" {
+		t.Fatalf("AIAPIKey = %q", cfg.AIAPIKey)
 	}
-	if cfg.GeminiModel != "gemini-2.5-flash" {
-		t.Fatalf("GeminiModel = %q", cfg.GeminiModel)
+	if cfg.AIModel != "openai/gpt-oss-20b:free" {
+		t.Fatalf("AIModel = %q", cfg.AIModel)
 	}
 	if cfg.AITimeout != 30*time.Second {
 		t.Fatalf("AITimeout = %v", cfg.AITimeout)

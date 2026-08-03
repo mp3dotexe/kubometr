@@ -4,21 +4,20 @@ import (
 	"context"
 	"fmt"
 
-	"google.golang.org/genai"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 )
 
 type Client struct {
-	client *genai.Client
+	client openai.Client
 	model  string
 }
 
 func New(apiKey, model string) (*Client, error) {
-	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-		APIKey: apiKey,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create genai client: %w", err)
-	}
+	client := openai.NewClient(
+		option.WithAPIKey(apiKey),
+		option.WithBaseURL("https://openrouter.ai/api/v1"),
+	)
 
 	return &Client{
 		client: client,
@@ -27,16 +26,18 @@ func New(apiKey, model string) (*Client, error) {
 }
 
 func (c *Client) Ask(ctx context.Context, prompt string) (string, error) {
-
-	resp, err := c.client.Models.GenerateContent(
+	resp, err := c.client.Chat.Completions.New(
 		ctx,
-		c.model,
-		genai.Text(prompt),
-		nil,
+		openai.ChatCompletionNewParams{
+			Model: c.model,
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(prompt),
+			},
+		},
 	)
 	if err != nil {
-		return "", fmt.Errorf("generate content: %w", err)
+		return "", fmt.Errorf("chat completion: %w", err)
 	}
 
-	return resp.Text(), nil
+	return resp.Choices[0].Message.Content, nil
 }

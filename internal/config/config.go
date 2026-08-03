@@ -13,8 +13,8 @@ import (
 
 type Config struct {
 	BotToken        string
-	GeminiAPIKey    string
-	GeminiModel     string
+	AIAPIKey        string
+	AIModel         string
 	AITimeout       time.Duration
 	AIRateLimit     time.Duration
 	MaxPromptLength int
@@ -33,9 +33,9 @@ func Load() (Config, error) {
 	}
 
 	token := strings.TrimSpace(os.Getenv("BOT_TOKEN"))
-	geminiAPIKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	if geminiAPIKey == "" {
-		return Config{}, errors.New("GEMINI_API_KEY is required")
+	AIAPIKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
+	if AIAPIKey == "" {
+		return Config{}, errors.New("OPENROUTER_API_KEY is required")
 	}
 	if token == "" {
 		return Config{}, errors.New("BOT_TOKEN is required")
@@ -88,8 +88,8 @@ func Load() (Config, error) {
 
 	return Config{
 		BotToken:         token,
-		GeminiAPIKey:     geminiAPIKey,
-		GeminiModel:      stringFromEnv("GEMINI_MODEL", "gemini-2.5-flash"),
+		AIAPIKey:         AIAPIKey,
+		AIModel:          stringFromEnv("AI_MODEL", "openai/gpt-oss-20b:free"),
 		AITimeout:        aiTimeout,
 		AIRateLimit:      aiRateLimit,
 		MaxPromptLength:  maxPromptLength,
