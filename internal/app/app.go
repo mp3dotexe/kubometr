@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 	"kubometr/internal/database"
 	"kubometr/internal/history"
 	"kubometr/internal/logger"
+	"kubometr/internal/max"
 	"kubometr/internal/state"
 	"kubometr/internal/telegram"
 	"kubometr/internal/users"
@@ -64,6 +66,16 @@ func Run() error {
 	})
 	if err != nil {
 		return fmt.Errorf("create telegram bot: %w", err)
+	}
+
+	if cfg.MaxToken != "" {
+		maxHandler := max.NewHandler(cs)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/max/webhook", maxHandler.HandleWebhook)
+
+		go func() {
+			http.ListenAndServe(":8080", mux)
+		}()
 	}
 
 	tg.Start(ctx)

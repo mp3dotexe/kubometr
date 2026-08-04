@@ -13,6 +13,7 @@ import (
 
 type Config struct {
 	BotToken        string
+	MaxToken        string
 	AIAPIKey        string
 	AIModel         string
 	AITimeout       time.Duration
@@ -33,8 +34,10 @@ func Load() (Config, error) {
 	}
 
 	token := strings.TrimSpace(os.Getenv("BOT_TOKEN"))
-	AIAPIKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
-	if AIAPIKey == "" {
+	maxToken := strings.TrimSpace(os.Getenv("MAX_TOKEN"))
+
+	aiAPIKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
+	if aiAPIKey == "" {
 		return Config{}, errors.New("OPENROUTER_API_KEY is required")
 	}
 	if token == "" {
@@ -88,7 +91,8 @@ func Load() (Config, error) {
 
 	return Config{
 		BotToken:         token,
-		AIAPIKey:         AIAPIKey,
+		MaxToken:         maxToken,
+		AIAPIKey:         aiAPIKey,
 		AIModel:          stringFromEnv("AI_MODEL", "openai/gpt-oss-20b:free"),
 		AITimeout:        aiTimeout,
 		AIRateLimit:      aiRateLimit,
