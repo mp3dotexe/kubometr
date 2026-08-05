@@ -39,5 +39,9 @@ func (c *Client) Ask(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("chat completion: %w", err)
 	}
 
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no choices returned from chat completion")
+	}
+
 	return resp.Choices[0].Message.Content, nil
 }
