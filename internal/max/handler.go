@@ -2,15 +2,14 @@ package max
 
 import (
 	"encoding/json"
-	"kubometr/internal/consultation"
 	"net/http"
 )
 
 type Handler struct {
-	consultation *consultation.Service
+	consultation ConsultationProcessor
 }
 
-func NewHandler(consultation *consultation.Service) *Handler {
+func NewHandler(consultation ConsultationProcessor) *Handler {
 	return &Handler{
 		consultation: consultation,
 	}
