@@ -7,7 +7,7 @@ import (
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("BOT_TOKEN", " bot-token ")
-	t.Setenv("GEMINI_API_KEY", " gemini-key ")
+	t.Setenv("OPENROUTER_API_KEY", " api-key ")
 	t.Setenv("POSTGRES_USER", "postgres")
 	t.Setenv("POSTGRES_PASSWORD", "password")
 	t.Setenv("POSTGRES_DB", "kubometr_db")
@@ -20,7 +20,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.BotToken != "bot-token" {
 		t.Fatalf("BotToken = %q", cfg.BotToken)
 	}
-	if cfg.AIAPIKey != "gemini-key" {
+	if cfg.AIAPIKey != "api-key" {
 		t.Fatalf("AIAPIKey = %q", cfg.AIAPIKey)
 	}
 	if cfg.AIModel != "openai/gpt-oss-20b:free" {
