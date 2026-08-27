@@ -63,6 +63,7 @@ func Run() error {
 	tg, err := telegram.New(telegram.Options{
 		Token:        cfg.BotToken,
 		Consultation: cs,
+		ProxyURL: cfg.ProxyURL,
 	})
 	if err != nil {
 		return fmt.Errorf("create telegram bot: %w", err)

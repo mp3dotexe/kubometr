@@ -3,13 +3,18 @@ package telegram
 import (
 	"context"
 	"kubometr/internal/consultation"
+	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/go-telegram/bot"
+	"golang.org/x/net/proxy"
 )
 
 type Options struct {
 	Token        string
 	Consultation *consultation.Service
+	ProxyURL	string
 }
 
 type Telegram struct {
@@ -18,7 +23,28 @@ type Telegram struct {
 }
 
 func New(opts Options) (*Telegram, error) {
-	b, err := bot.New(opts.Token)
+	var opts_bot []bot.Option
+	if opts.ProxyURL != "" {
+		proxyURL, err := url.Parse(opts.ProxyURL)
+		if err != nil {
+			return nil, err
+		}
+
+		dialer, err := proxy.FromURL(proxyURL, proxy.Direct)
+		if err != nil {
+			return nil, err
+		}
+
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				DialContext: dialer.(proxy.ContextDialer).DialContext,
+			},
+			Timeout: 30 * time.Second,
+		}
+
+		opts_bot = append(opts_bot, bot.WithHTTPClient(10*time.Second, httpClient))
+	}
+	b, err := bot.New(opts.Token, opts_bot...)
 	if err != nil {
 		return nil, err
 	}
