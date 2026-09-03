@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"kubometr/internal/ai"
 	"kubometr/internal/history"
 	"kubometr/internal/state"
-	"kubometr/internal/users"
 	"strings"
 	"sync"
 	"time"
@@ -18,27 +16,28 @@ var ErrUnknownUserState = errors.New("unknown user state")
 const historyLimit = 20
 
 type Service struct {
-	state           *state.StateManager
-	ai              *ai.Client
+	state           stateStore
+	ai              aiAsker
+	history         historyStore
+	users           userStore
 	aiTimeout       time.Duration
 	aiRateLimit     time.Duration
 	maxPromptLength int
 	aiLimiter       chan struct{}
 	mu              sync.Mutex
 	lastAIRequest   map[int64]time.Time
-	history         *history.Repository
-	users           *users.Repository
+	
 }
 
 func New(
-	state *state.StateManager,
-	ai *ai.Client,
+	state stateStore,
+	ai aiAsker,
 	aiTimeout time.Duration,
 	aiRateLimit time.Duration,
 	maxPromptLength int,
 	maxConcurrentAI int,
-	history *history.Repository,
-	users *users.Repository,
+	history historyStore,
+	users userStore,
 ) *Service {
 	return &Service{
 		state:           state,
