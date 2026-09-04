@@ -14,6 +14,8 @@ import (
 type Config struct {
 	BotToken        string
 	MaxToken        string
+	MaxWebhookSecret	string
+	MaxPort			int
 	ProxyURL		string
 	AIAPIKey        string
 	AIModel         string
@@ -35,7 +37,17 @@ func Load() (Config, error) {
 	}
 
 	token := strings.TrimSpace(os.Getenv("BOT_TOKEN"))
+
 	maxToken := strings.TrimSpace(os.Getenv("MAX_TOKEN"))
+	maxWebhookSecret := strings.TrimSpace(os.Getenv("MAX_WEBHOOK_SECRET"))
+	if maxToken != "" && maxWebhookSecret == ""{
+		return Config{}, errors.New("MAX_WEBHOOK_SECRET is required when MAX_TOKEN is set")
+	}
+	maxPort, err := intFromEnv("MAX_PORT", 8080)
+	if err != nil {
+		return Config{}, err
+	}
+
 	proxyURL := strings.TrimSpace(os.Getenv("PROXY_URL"))
 
 	aiAPIKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
@@ -94,6 +106,8 @@ func Load() (Config, error) {
 	return Config{
 		BotToken:         token,
 		MaxToken:         maxToken,
+		MaxWebhookSecret: maxWebhookSecret,
+		MaxPort: 		  maxPort,
 		ProxyURL: 		  proxyURL,
 		AIAPIKey:         aiAPIKey,
 		AIModel:          stringFromEnv("AI_MODEL", "openai/gpt-oss-20b:free"),

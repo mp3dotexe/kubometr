@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"kubometr/internal/ai"
 	"kubometr/internal/config"
@@ -70,15 +71,19 @@ func Run() error {
 	}
 
 	if cfg.MaxToken != "" {
-		maxHandler := max.NewHandler(cs)
+		maxHandler := max.NewHandler(cs, cfg.MaxWebhookSecret)
 		mux := http.NewServeMux()
 		mux.HandleFunc("/max/webhook", maxHandler.HandleWebhook)
-
-		go func() {
-			http.ListenAndServe(":8080", mux)
+		srv := &http.Server{
+			Addr: fmt.Sprintf(":%d", cfg.MaxPort),
+			Handler: mux,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func(){
+			srv.ListenAndServe()
 		}()
 	}
-
+	
 	tg.Start(ctx)
 	return nil
 }
