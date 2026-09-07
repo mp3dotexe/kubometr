@@ -56,7 +56,7 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	var chatID int64 = update.Message.Recipient.UserID
+	var chatID int64 = update.Message.Recipient.ChatID
 
 	answer, err := h.consultation.Process(ctx, chatID, question)
 	if err != nil {

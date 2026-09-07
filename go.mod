@@ -6,6 +6,7 @@ require (
 	github.com/go-telegram/bot v1.22.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1
+	github.com/max-messenger/max-bot-api-client-go v1.7.1
 	github.com/openai/openai-go v1.12.0
 	golang.org/x/net v0.58.0
 )

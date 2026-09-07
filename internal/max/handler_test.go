@@ -14,11 +14,13 @@ type mockConsultation struct {
 	err error
 }
 
-func TestHandleWebhook_InvalidJSON(t *testing.T) {
+const testSecret = "test-secret"
 
-	handler := NewHandler(nil)
+func TestHandleWebhook_InvalidJSON(t *testing.T) {
+	handler := NewHandler(nil, testSecret)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader("invalid json"))
+	req.Header.Set("X-Max-Bot-Api-Secret", testSecret)
 	recorder := httptest.NewRecorder()
 
 	handler.HandleWebhook(recorder, req)
@@ -36,9 +38,10 @@ func TestHandleWebhook_ConsultationError(t *testing.T) {
 	handler := NewHandler(&mockConsultation{
 		answer: "",
 		err: errors.New("consultation error"),
-	})
+	}, testSecret)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{"update_type": "message_created", "message": {"body": {"text": "test question"}, "recipient": {"user_id": 12345}}}`))
+	req.Header.Set("X-Max-Bot-Api-Secret", testSecret)
 	recorder := httptest.NewRecorder()
 
 	handler.HandleWebhook(recorder, req)
@@ -52,9 +55,10 @@ func TestHandleWebhook_Success(t *testing.T) {
 	handler := NewHandler(&mockConsultation{
 		answer: "test answer",
 		err: nil,
-	})
+	}, testSecret)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{"update_type": "message_created", "message": {"body": {"text": "test question"}, "recipient": {"user_id": 12345}}}`))
+	req.Header.Set("X-Max-Bot-Api-Secret", testSecret)
 	recorder := httptest.NewRecorder()
 
 	handler.HandleWebhook(recorder, req)

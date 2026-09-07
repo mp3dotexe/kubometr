@@ -13,7 +13,7 @@ type MessageBody struct {
 
 type Recipient struct {
 	UserID int64  `json:"user_id"`
-	ChatID string `json:"chat_id"`
+	ChatID int64 `json:"chat_id"`
 }
 
 type Update struct {
