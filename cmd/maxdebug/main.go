@@ -10,6 +10,9 @@ import(
 )
 
 func main() {
+	ctx := context.Background()
+	var chatID int64 = 262707588
+	
 	httpClient, err := max.NewTrustedHTTPClient()
 	if err != nil {
 		panic(err)
@@ -20,6 +23,16 @@ func main() {
 		panic(err)
 	}
 
+	client, err := max.NewClient(os.Getenv("MAX_TOKEN"), httpClient)
+	if err != nil{
+		panic(err)
+	}
+
+	err = client.SendMessage(ctx, chatID, "text")
+	if err != nil {
+		panic(err)
+	}
+	
 	updates := api.GetUpdates(context.Background())
 	for u := range updates {
 		fmt.Printf("%+v\n", u)
