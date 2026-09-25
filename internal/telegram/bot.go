@@ -2,10 +2,12 @@ package telegram
 
 import (
 	"context"
-	"kubometr/internal/consultation"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
+
+	"kubometr/internal/consultation"
 
 	"github.com/go-telegram/bot"
 	"golang.org/x/net/proxy"
@@ -14,7 +16,7 @@ import (
 type Options struct {
 	Token        string
 	Consultation *consultation.Service
-	ProxyURL	string
+	ProxyURL     string
 }
 
 type Telegram struct {
@@ -23,28 +25,33 @@ type Telegram struct {
 }
 
 func New(opts Options) (*Telegram, error) {
-	var opts_bot []bot.Option
+	var botOpts []bot.Option
 	if opts.ProxyURL != "" {
 		proxyURL, err := url.Parse(opts.ProxyURL)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse proxy url: %w", err)
 		}
 
 		dialer, err := proxy.FromURL(proxyURL, proxy.Direct)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create proxy dialer: %w", err)
+		}
+
+		contextDialer, ok := dialer.(proxy.ContextDialer)
+		if !ok {
+			return nil, fmt.Errorf("proxy scheme %q does not support dialing with context", proxyURL.Scheme)
 		}
 
 		httpClient := &http.Client{
 			Transport: &http.Transport{
-				DialContext: dialer.(proxy.ContextDialer).DialContext,
+				DialContext: contextDialer.DialContext,
 			},
 			Timeout: 30 * time.Second,
 		}
 
-		opts_bot = append(opts_bot, bot.WithHTTPClient(10*time.Second, httpClient))
+		botOpts = append(botOpts, bot.WithHTTPClient(10*time.Second, httpClient))
 	}
-	b, err := bot.New(opts.Token, opts_bot...)
+	b, err := bot.New(opts.Token, botOpts...)
 	if err != nil {
 		return nil, err
 	}

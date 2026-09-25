@@ -66,8 +66,8 @@ func (t *Telegram) HandleHelp(ctx context.Context, b *bot.Bot, update *models.Up
 		ChatID: update.Message.Chat.ID,
 		Text: `📖 Доступные команды:
 
-	/start - начать работу
-	/help - показать помощь`,
+/start - начать работу
+/help - показать помощь`,
 	})
 
 	if err != nil {
