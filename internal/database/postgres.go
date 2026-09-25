@@ -3,6 +3,9 @@ package database
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 
 	"kubometr/internal/config"
 
@@ -10,16 +13,7 @@ import (
 )
 
 func Connect(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
-	dsn := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s",
-		cfg.PostgresUser,
-		cfg.PostgresPassword,
-		cfg.PostgresHost,
-		cfg.PostgresPort,
-		cfg.PostgresDB,
-	)
-
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := pgxpool.New(ctx, dsn(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("create pg pool: %w", err)
 	}
@@ -30,4 +24,15 @@ func Connect(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil
+}
+
+// dsn escapes credentials so passwords with characters like "@" or "/" work.
+func dsn(cfg *config.Config) string {
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(cfg.PostgresUser, cfg.PostgresPassword),
+		Host:   net.JoinHostPort(cfg.PostgresHost, strconv.Itoa(cfg.PostgresPort)),
+		Path:   "/" + cfg.PostgresDB,
+	}
+	return u.String()
 }
