@@ -18,6 +18,7 @@ type Config struct {
 	MaxPort			int
 	ProxyURL		string
 	AIAPIKey        string
+	AIBaseURL       string
 	AIModel         string
 	AITimeout       time.Duration
 	AIRateLimit     time.Duration
@@ -110,6 +111,7 @@ func Load() (Config, error) {
 		MaxPort: 		  maxPort,
 		ProxyURL: 		  proxyURL,
 		AIAPIKey:         aiAPIKey,
+		AIBaseURL:        stringFromEnv("AI_BASE_URL", "https://openrouter.ai/api/v1"),
 		AIModel:          stringFromEnv("AI_MODEL", "openai/gpt-oss-20b:free"),
 		AITimeout:        aiTimeout,
 		AIRateLimit:      aiRateLimit,

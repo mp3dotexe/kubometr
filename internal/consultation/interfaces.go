@@ -2,12 +2,14 @@ package consultation
 
 import (
 	"context"
-	"kubometr/internal/state"
+
+	"kubometr/internal/ai"
 	"kubometr/internal/history"
+	"kubometr/internal/state"
 )
 
-type aiAsker interface {
-	Ask(ctx context.Context, prompt string) (string, error)
+type aiCompleter interface {
+	Complete(ctx context.Context, messages []ai.Message) (string, error)
 }
 
 type stateStore interface {

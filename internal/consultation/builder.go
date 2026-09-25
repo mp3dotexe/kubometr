@@ -1,44 +1,33 @@
 package consultation
 
 import (
+	"kubometr/internal/ai"
 	"kubometr/internal/history"
-	"strings"
 )
 
-func buildPrompt(messages []history.Message) string {
-	var builder strings.Builder
+const continuationNote = "Диалог уже продолжается — не здоровайся повторно. " +
+	"Не задавай вопросы, ответы на которые уже есть в предыдущих сообщениях."
 
-	builder.WriteString(consultantPrompt)
-	builder.WriteString("\n\nИстория диалога:\n\n")
-
-	if len(messages) == 1 {
-		builder.WriteString("Это первое сообщение пользователя.\n")
-	} else {
-		builder.WriteString("Диалог уже продолжается.\n")
-		builder.WriteString("Не здоровайся повторно.\n")
+// buildMessages turns the stored dialog into a chat completion request:
+// the consultant instructions go into the system message and every stored
+// message keeps its role, so the model sees a real multi-turn conversation.
+func buildMessages(messages []history.Message) []ai.Message {
+	system := consultantPrompt
+	if len(messages) > 1 {
+		system += "\n\n" + continuationNote
 	}
 
-	builder.WriteString("\n")
-	builder.WriteString("Ниже приведена полная история текущего диалога.\n")
-	builder.WriteString("Используй ее как единственный источник контекста.\n")
-	builder.WriteString("Не задавай повторно вопросы, ответы на которые уже есть в истории.\n")
-	builder.WriteString("Если информации достаточно для рекомендации — сразу дай рекомендацию.\n")
-	builder.WriteString("\n===== ИСТОРИЯ ДИАЛОГА =====\n\n")
+	result := make([]ai.Message, 0, len(messages)+1)
+	result = append(result, ai.Message{Role: ai.RoleSystem, Content: system})
 
 	for _, msg := range messages {
 		switch msg.Role {
 		case history.UserRole:
-			builder.WriteString("Пользователь:\n")
+			result = append(result, ai.Message{Role: ai.RoleUser, Content: msg.Text})
 		case history.AIRole:
-			builder.WriteString("Консультант:\n")
+			result = append(result, ai.Message{Role: ai.RoleAssistant, Content: msg.Text})
 		}
-
-		builder.WriteString(msg.Text)
-		builder.WriteString("\n\n")
 	}
 
-	builder.WriteString("\n===== КОНЕЦ ИСТОРИИ =====\n")
-	builder.WriteString("Ответь только на последнее сообщение пользователя.")
-
-	return builder.String()
+	return result
 }

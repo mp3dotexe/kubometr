@@ -8,15 +8,30 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
+type Role string
+
+const (
+	RoleSystem    Role = "system"
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+)
+
+type Message struct {
+	Role    Role
+	Content string
+}
+
 type Client struct {
 	client openai.Client
 	model  string
 }
 
-func New(apiKey, model string) (*Client, error) {
+// New creates a client for any OpenAI-compatible chat completions API
+// (OpenRouter by default).
+func New(apiKey, baseURL, model string) (*Client, error) {
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),
-		option.WithBaseURL("https://openrouter.ai/api/v1"),
+		option.WithBaseURL(baseURL),
 	)
 
 	return &Client{
@@ -25,14 +40,26 @@ func New(apiKey, model string) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) Ask(ctx context.Context, prompt string) (string, error) {
+func (c *Client) Complete(ctx context.Context, messages []Message) (string, error) {
+	params := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
+	for _, m := range messages {
+		switch m.Role {
+		case RoleSystem:
+			params = append(params, openai.SystemMessage(m.Content))
+		case RoleUser:
+			params = append(params, openai.UserMessage(m.Content))
+		case RoleAssistant:
+			params = append(params, openai.AssistantMessage(m.Content))
+		default:
+			return "", fmt.Errorf("unknown message role %q", m.Role)
+		}
+	}
+
 	resp, err := c.client.Chat.Completions.New(
 		ctx,
 		openai.ChatCompletionNewParams{
-			Model: c.model,
-			Messages: []openai.ChatCompletionMessageParamUnion{
-				openai.UserMessage(prompt),
-			},
+			Model:    c.model,
+			Messages: params,
 		},
 	)
 	if err != nil {

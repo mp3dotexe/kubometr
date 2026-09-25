@@ -17,7 +17,7 @@ const historyLimit = 20
 
 type Service struct {
 	state           stateStore
-	ai              aiAsker
+	ai              aiCompleter
 	history         historyStore
 	users           userStore
 	aiTimeout       time.Duration
@@ -31,7 +31,7 @@ type Service struct {
 
 func New(
 	state stateStore,
-	ai aiAsker,
+	ai aiCompleter,
 	aiTimeout time.Duration,
 	aiRateLimit time.Duration,
 	maxPromptLength int,
@@ -93,14 +93,13 @@ func (s *Service) Process(ctx context.Context, chatID int64, question string) (s
 		if err != nil {
 			return "", fmt.Errorf("load history: %w", err)
 		}
-		prompt := buildPrompt(messages)
 
 		aiCtx, cancel := context.WithTimeout(ctx, s.aiTimeout)
 		defer cancel()
 
-		answer, err := s.ai.Ask(aiCtx, prompt)
+		answer, err := s.ai.Complete(aiCtx, buildMessages(messages))
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("ask ai: %w", err)
 		}
 
 		answer = strings.TrimSpace(answer)

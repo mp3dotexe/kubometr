@@ -46,7 +46,7 @@ func Run() error {
 
 	s := state.New()
 
-	a, err := ai.New(cfg.AIAPIKey, cfg.AIModel)
+	a, err := ai.New(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModel)
 	if err != nil {
 		return fmt.Errorf("create ai client: %w", err)
 	}

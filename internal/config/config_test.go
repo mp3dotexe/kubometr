@@ -23,6 +23,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.AIAPIKey != "api-key" {
 		t.Fatalf("AIAPIKey = %q", cfg.AIAPIKey)
 	}
+	if cfg.AIBaseURL != "https://openrouter.ai/api/v1" {
+		t.Fatalf("AIBaseURL = %q", cfg.AIBaseURL)
+	}
 	if cfg.AIModel != "openai/gpt-oss-20b:free" {
 		t.Fatalf("AIModel = %q", cfg.AIModel)
 	}
