@@ -10,13 +10,53 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const (
-	buttonConsultation = "💬 Консультация"
-	buttonRequests     = "🧾 Мои заявки"
-	buttonHelp         = "ℹ️ Помощь"
+const telegramMessageLimit = 4096
 
-	telegramMessageLimit = 4096
+const (
+	consultationText = `Здравствуйте!
+
+Я — виртуальный консультант Кубометра.
+
+Опишите, что вы хотите сделать, а я помогу подобрать материалы.
+
+Например:
+
+• Нужно утеплить балкон.
+• Хочу сделать перегородку из гипсокартона.
+• Нужна краска для ванной.
+• Планирую залить стяжку пола.`
+
+	helpText = `📖 Как пользоваться ботом
+
+` + chat.ButtonConsultation + ` — опишите задачу, например «нужно утеплить балкон 6 м²», и я подскажу, какие материалы понадобятся.
+` + chat.ButtonSubmit + ` — менеджер перезвонит и уточнит цены, наличие и доставку. В заявку попадёт ваш диалог с консультантом, а номер телефона Telegram попросит подтвердить.
+` + chat.ButtonRequests + ` — статусы ваших заявок.
+` + chat.ButtonManager + ` — как связаться с менеджером.
+` + chat.ButtonNewDialog + ` — начать заново, история очищается.
+
+Команды: /start, /new, /requests, /manager, /help`
+
+	errorText = "Что-то пошло не так. Попробуйте ещё раз чуть позже."
 )
+
+// mainKeyboard stays under the input field. The request button asks Telegram
+// for the client's phone number, which arrives as a contact message.
+var mainKeyboard = &models.ReplyKeyboardMarkup{
+	ResizeKeyboard: true,
+	Keyboard: [][]models.KeyboardButton{
+		{{Text: chat.ButtonConsultation}, {Text: chat.ButtonSubmit, RequestContact: true}},
+		{{Text: chat.ButtonRequests}, {Text: chat.ButtonManager}},
+		{{Text: chat.ButtonNewDialog}, {Text: chat.ButtonHelp}},
+	},
+}
+
+var commands = []models.BotCommand{
+	{Command: "start", Description: "Главное меню"},
+	{Command: "new", Description: "Новый диалог"},
+	{Command: "requests", Description: "Мои заявки"},
+	{Command: "manager", Description: "Связаться с менеджером"},
+	{Command: "help", Description: "Помощь"},
+}
 
 func (t *Telegram) HandleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
@@ -28,33 +68,7 @@ func (t *Telegram) HandleStart(ctx context.Context, b *bot.Bot, update *models.U
 		slog.ErrorContext(ctx, "reset consultation", "chat_id", chatID, "error", err)
 	}
 
-	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: chatID,
-		Text:   "Добро пожаловать в Кубометр!\n\nВыберите действие:",
-
-		ReplyMarkup: &models.ReplyKeyboardMarkup{
-			ResizeKeyboard: true,
-			Keyboard: [][]models.KeyboardButton{
-				{
-					{
-						Text: buttonConsultation,
-					},
-					{
-						Text: buttonRequests,
-					},
-				},
-				{
-					{
-						Text: buttonHelp,
-					},
-				},
-			},
-		},
-	})
-
-	if err != nil {
-		slog.ErrorContext(ctx, "send start message", "chat_id", chatID, "error", err)
-	}
+	t.sendWithKeyboard(ctx, chatID, "Добро пожаловать в Кубометр!\n\nВыберите действие:")
 }
 
 func (t *Telegram) HandleHelp(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -62,17 +76,9 @@ func (t *Telegram) HandleHelp(ctx context.Context, b *bot.Bot, update *models.Up
 		return
 	}
 
-	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: update.Message.Chat.ID,
-		Text: `📖 Доступные команды:
-
-/start - начать работу
-/help - показать помощь`,
-	})
-
-	if err != nil {
-		slog.ErrorContext(ctx, "send help message", "chat_id", update.Message.Chat.ID, "error", err)
-	}
+	// The keyboard is sent again, so chats started before new buttons
+	// appeared get them too.
+	t.sendWithKeyboard(ctx, update.Message.Chat.ID, helpText)
 }
 
 func (t *Telegram) HandleConsultation(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -82,25 +88,20 @@ func (t *Telegram) HandleConsultation(ctx context.Context, b *bot.Bot, update *m
 
 	chatID := update.Message.Chat.ID
 	t.consultation.Start(chatRef(chatID))
+	t.reply(ctx, chatID, consultationText)
+}
 
-	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: chatID,
-		Text: `Здравствуйте!
-
-Я — виртуальный консультант Кубометра.
-
-Опишите, что вы хотите сделать, а я помогу подобрать материалы.
-
-Например:
-
-• Нужно утеплить балкон.
-• Хочу сделать перегородку из гипсокартона.
-• Нужна краска для ванной.
-• Планирую залить стяжку пола.`,
-	})
-	if err != nil {
-		slog.ErrorContext(ctx, "send consultation message", "chat_id", chatID, "error", err)
+func (t *Telegram) HandleNewDialog(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil {
+		return
 	}
+
+	chatID := update.Message.Chat.ID
+	if err := t.consultation.Reset(ctx, chatRef(chatID)); err != nil {
+		slog.ErrorContext(ctx, "reset consultation", "chat_id", chatID, "error", err)
+	}
+	t.consultation.Start(chatRef(chatID))
+	t.sendWithKeyboard(ctx, chatID, consultationText)
 }
 
 func (t *Telegram) HandleRequests(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -109,10 +110,35 @@ func (t *Telegram) HandleRequests(ctx context.Context, b *bot.Bot, update *model
 	}
 
 	chatID := update.Message.Chat.ID
-	err := t.sendText(ctx, b, chatID, "Раздел заявок пока в разработке. Если нужна помощь с подбором материалов, нажмите «💬 Консультация».")
+	list, err := t.requests.List(ctx, chatRef(chatID))
 	if err != nil {
-		slog.ErrorContext(ctx, "send requests message", "chat_id", chatID, "error", err)
+		slog.ErrorContext(ctx, "list requests", "chat_id", chatID, "error", err)
+		list = errorText
 	}
+	t.reply(ctx, chatID, list)
+}
+
+func (t *Telegram) HandleManager(ctx context.Context, b *bot.Bot, update *models.Update) {
+	if update.Message == nil {
+		return
+	}
+
+	t.reply(ctx, update.Message.Chat.ID, chat.ManagerText(t.managerContact))
+}
+
+func hasContact(update *models.Update) bool {
+	return update.Message != nil && update.Message.Contact != nil
+}
+
+// HandleContact turns a shared phone number into a request.
+func (t *Telegram) HandleContact(ctx context.Context, b *bot.Bot, update *models.Update) {
+	chatID := update.Message.Chat.ID
+	answer, err := t.requests.Submit(ctx, chatRef(chatID), update.Message.Contact.PhoneNumber)
+	if err != nil {
+		slog.ErrorContext(ctx, "submit request", "chat_id", chatID, "error", err)
+		answer = errorText
+	}
+	t.reply(ctx, chatID, answer)
 }
 
 func (t *Telegram) HandleMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -135,28 +161,15 @@ func (t *Telegram) HandleMessage(ctx context.Context, b *bot.Bot, update *models
 
 	if err != nil {
 		slog.ErrorContext(ctx, "process consultation", "chat_id", chatID, "error", err)
-
-		sendErr := t.sendText(
-			ctx,
-			b,
-			chatID,
-			"Не удалось получить ответ от AI-консультанта. Попробуйте повторить вопрос чуть позже.",
-		)
-		if sendErr != nil {
-			slog.ErrorContext(ctx, "send fallback message", "chat_id", chatID, "error", sendErr)
-		}
-
-		return
+		answer = "Не удалось получить ответ от AI-консультанта. Попробуйте повторить вопрос чуть позже."
 	}
-
-	if err := t.sendText(ctx, b, chatID, answer); err != nil {
-		slog.ErrorContext(ctx, "send answer", "chat_id", chatID, "error", err)
-	}
+	t.reply(ctx, chatID, answer)
 }
 
-func (t *Telegram) sendText(ctx context.Context, b *bot.Bot, chatID int64, text string) error {
+// SendText sends a text of any length, split into several messages if needed.
+func (t *Telegram) SendText(ctx context.Context, chatID int64, text string) error {
 	for _, part := range chat.SplitText(text, telegramMessageLimit) {
-		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		_, err := t.bot.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
 			Text:   part,
 		})
@@ -166,6 +179,25 @@ func (t *Telegram) sendText(ctx context.Context, b *bot.Bot, chatID int64, text 
 	}
 
 	return nil
+}
+
+// reply sends a text and logs a failure: the handler has nobody to return
+// the error to.
+func (t *Telegram) reply(ctx context.Context, chatID int64, text string) {
+	if err := t.SendText(ctx, chatID, text); err != nil {
+		slog.ErrorContext(ctx, "send message", "chat_id", chatID, "error", err)
+	}
+}
+
+func (t *Telegram) sendWithKeyboard(ctx context.Context, chatID int64, text string) {
+	_, err := t.bot.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        text,
+		ReplyMarkup: mainKeyboard,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "send message", "chat_id", chatID, "error", err)
+	}
 }
 
 func chatRef(chatID int64) chat.ID {

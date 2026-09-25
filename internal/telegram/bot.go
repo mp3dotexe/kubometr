@@ -3,25 +3,32 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
 
+	"kubometr/internal/chat"
 	"kubometr/internal/consultation"
+	"kubometr/internal/requests"
 
 	"github.com/go-telegram/bot"
 	"golang.org/x/net/proxy"
 )
 
 type Options struct {
-	Token        string
-	Consultation *consultation.Service
-	ProxyURL     string
+	Token          string
+	Consultation   *consultation.Service
+	Requests       *requests.Service
+	ManagerContact string
+	ProxyURL       string
 }
 
 type Telegram struct {
-	bot          *bot.Bot
-	consultation *consultation.Service
+	bot            *bot.Bot
+	consultation   *consultation.Service
+	requests       *requests.Service
+	managerContact string
 }
 
 func New(opts Options) (*Telegram, error) {
@@ -57,8 +64,10 @@ func New(opts Options) (*Telegram, error) {
 	}
 
 	t := &Telegram{
-		bot:          b,
-		consultation: opts.Consultation,
+		bot:            b,
+		consultation:   opts.Consultation,
+		requests:       opts.Requests,
+		managerContact: opts.ManagerContact,
 	}
 	t.registerHandlers()
 
@@ -66,14 +75,30 @@ func New(opts Options) (*Telegram, error) {
 }
 
 func (t *Telegram) Start(ctx context.Context) {
+	// The commands show up in the "Menu" button next to the input field.
+	if _, err := t.bot.SetMyCommands(ctx, &bot.SetMyCommandsParams{Commands: commands}); err != nil {
+		slog.ErrorContext(ctx, "set telegram commands", "error", err)
+	}
 	t.bot.Start(ctx)
 }
 
+// registerHandlers registers handlers in order: the first matching one wins,
+// so the catch-all consultation handler goes last.
 func (t *Telegram) registerHandlers() {
-	t.bot.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypeExact, t.HandleStart)
-	t.bot.RegisterHandler(bot.HandlerTypeMessageText, "/help", bot.MatchTypeExact, t.HandleHelp)
-	t.bot.RegisterHandler(bot.HandlerTypeMessageText, "ℹ️ Помощь", bot.MatchTypeExact, t.HandleHelp)
-	t.bot.RegisterHandler(bot.HandlerTypeMessageText, "💬 Консультация", bot.MatchTypeExact, t.HandleConsultation)
-	t.bot.RegisterHandler(bot.HandlerTypeMessageText, "🧾 Мои заявки", bot.MatchTypeExact, t.HandleRequests)
+	exact := func(text string, handler bot.HandlerFunc) {
+		t.bot.RegisterHandler(bot.HandlerTypeMessageText, text, bot.MatchTypeExact, handler)
+	}
+	exact("/start", t.HandleStart)
+	exact("/help", t.HandleHelp)
+	exact(chat.ButtonHelp, t.HandleHelp)
+	exact(chat.ButtonConsultation, t.HandleConsultation)
+	exact("/new", t.HandleNewDialog)
+	exact(chat.ButtonNewDialog, t.HandleNewDialog)
+	exact("/requests", t.HandleRequests)
+	exact(chat.ButtonRequests, t.HandleRequests)
+	exact("/manager", t.HandleManager)
+	exact(chat.ButtonManager, t.HandleManager)
+	// A contact message has no text and would match the catch-all below.
+	t.bot.RegisterHandlerMatchFunc(hasContact, t.HandleContact)
 	t.bot.RegisterHandler(bot.HandlerTypeMessageText, "", bot.MatchTypePrefix, t.HandleMessage)
 }

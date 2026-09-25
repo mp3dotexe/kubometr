@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"kubometr/internal/ai"
+	"kubometr/internal/chat"
 	"kubometr/internal/config"
 	"kubometr/internal/consultation"
 	"kubometr/internal/database"
 	"kubometr/internal/history"
 	"kubometr/internal/logger"
 	"kubometr/internal/max"
+	"kubometr/internal/requests"
 	"kubometr/internal/state"
 	"kubometr/internal/telegram"
 	"kubometr/internal/users"
@@ -56,6 +58,9 @@ func Run() error {
 		return fmt.Errorf("create ai client: %w", err)
 	}
 
+	historyRepo := history.New(pool)
+	usersRepo := users.New(pool)
+
 	cs := consultation.New(
 		state.New(),
 		a,
@@ -63,17 +68,53 @@ func Run() error {
 		cfg.AIRateLimit,
 		cfg.MaxPromptLength,
 		cfg.MaxConcurrentAI,
-		history.New(pool),
-		users.New(pool),
+		historyRepo,
+		usersRepo,
 	)
+
+	var maxClient *max.Client
+	if cfg.MaxToken != "" {
+		httpClient, err := max.NewTrustedHTTPClient()
+		if err != nil {
+			return fmt.Errorf("create max http client: %w", err)
+		}
+		maxClient, err = max.NewClient(cfg.MaxToken, httpClient)
+		if err != nil {
+			return err
+		}
+	}
+
+	var notifyManager func(context.Context, requests.Request) error
+	if cfg.ManagerChatID != 0 {
+		notifyManager = func(ctx context.Context, req requests.Request) error {
+			return maxClient.SendRequest(ctx, cfg.ManagerChatID, req)
+		}
+	}
+
+	// A request status change reaches the client in their own messenger. tg
+	// is set below, before the bots start handling updates.
+	var tg *telegram.Telegram
+	notifyClient := func(ctx context.Context, id chat.ID, text string) error {
+		switch {
+		case id.Platform == chat.Telegram && tg != nil:
+			return tg.SendText(ctx, id.ChatID, text)
+		case id.Platform == chat.MAX && maxClient != nil:
+			return maxClient.SendMessage(ctx, id.ChatID, text, max.NoMenu)
+		}
+		return fmt.Errorf("messenger %s is not enabled", id.Platform)
+	}
+
+	rs := requests.NewService(requests.NewRepository(pool), usersRepo, historyRepo, notifyManager, notifyClient)
 
 	g, gctx := errgroup.WithContext(ctx)
 
 	if cfg.BotToken != "" {
-		tg, err := telegram.New(telegram.Options{
-			Token:        cfg.BotToken,
-			Consultation: cs,
-			ProxyURL:     cfg.ProxyURL,
+		tg, err = telegram.New(telegram.Options{
+			Token:          cfg.BotToken,
+			Consultation:   cs,
+			Requests:       rs,
+			ManagerContact: cfg.ManagerContact,
+			ProxyURL:       cfg.ProxyURL,
 		})
 		if err != nil {
 			return fmt.Errorf("create telegram bot: %w", err)
@@ -86,8 +127,8 @@ func Run() error {
 		})
 	}
 
-	if cfg.MaxToken != "" {
-		if err := startMax(gctx, g, &cfg, cs, pool); err != nil {
+	if maxClient != nil {
+		if err := startMax(gctx, g, &cfg, cs, rs, maxClient, pool); err != nil {
 			return err
 		}
 	}
@@ -95,19 +136,22 @@ func Run() error {
 	return g.Wait()
 }
 
-func startMax(ctx context.Context, g *errgroup.Group, cfg *config.Config, cs *consultation.Service, pool *pgxpool.Pool) error {
-	httpClient, err := max.NewTrustedHTTPClient()
-	if err != nil {
-		return fmt.Errorf("create max http client: %w", err)
-	}
-
-	client, err := max.NewClient(cfg.MaxToken, httpClient)
-	if err != nil {
-		return err
-	}
-
-	// Leave room for the database calls around the AI request.
-	handler := max.NewHandler(cs, client, cfg.MaxWebhookSecret, cfg.AITimeout+30*time.Second)
+func startMax(
+	ctx context.Context,
+	g *errgroup.Group,
+	cfg *config.Config,
+	cs *consultation.Service,
+	rs *requests.Service,
+	client *max.Client,
+	pool *pgxpool.Pool,
+) error {
+	handler := max.NewHandler(cs, rs, client, max.HandlerConfig{
+		WebhookSecret:  cfg.MaxWebhookSecret,
+		ManagerChatID:  cfg.ManagerChatID,
+		ManagerContact: cfg.ManagerContact,
+		// Leave room for the database calls around the AI request.
+		ProcessTimeout: cfg.AITimeout + 30*time.Second,
+	})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/max/webhook", handler.HandleWebhook)

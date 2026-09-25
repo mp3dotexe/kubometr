@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -26,30 +27,45 @@ const (
 • Нужно утеплить балкон.
 • Хочу сделать перегородку из гипсокартона.
 • Нужна краска для ванной.
-• Планирую залить стяжку пола.`
+• Планирую залить стяжку пола.
 
-	helpText = `📖 Просто опишите задачу, и я подскажу, какие материалы понадобятся.
+Когда определитесь с материалами, нажмите «` + chat.ButtonSubmit + `» — менеджер перезвонит.`
 
-/start — начать новый диалог (история очищается)
-/help — показать помощь`
+	helpText = `📖 Опишите задачу, например «нужно утеплить балкон 6 м²», и я подскажу, какие материалы понадобятся.
+
+` + chat.ButtonSubmit + ` — менеджер перезвонит и уточнит цены, наличие и доставку. В заявку попадёт ваш диалог с консультантом.
+` + chat.ButtonRequests + ` — статусы ваших заявок.
+` + chat.ButtonManager + ` — как связаться с менеджером.
+` + chat.ButtonNewDialog + ` — начать заново, история очищается.
+
+Команды: /new, /requests, /manager, /help`
 
 	fallbackText = "Не удалось получить ответ от AI-консультанта. Попробуйте повторить вопрос чуть позже."
+	errorText    = "Что-то пошло не так. Попробуйте ещё раз чуть позже."
 )
 
-type Handler struct {
-	consultation   ConsultationService
-	sender         MessageSender
-	webhookSecret  string
-	processTimeout time.Duration
-	wg             sync.WaitGroup
+type HandlerConfig struct {
+	WebhookSecret string
+	// ManagerChatID is the chat that receives requests; 0 when not set.
+	ManagerChatID  int64
+	ManagerContact string
+	ProcessTimeout time.Duration
 }
 
-func NewHandler(consultation ConsultationService, sender MessageSender, webhookSecret string, processTimeout time.Duration) *Handler {
+type Handler struct {
+	consultation ConsultationService
+	requests     RequestService
+	sender       MessageSender
+	cfg          HandlerConfig
+	wg           sync.WaitGroup
+}
+
+func NewHandler(consultation ConsultationService, requests RequestService, sender MessageSender, cfg HandlerConfig) *Handler {
 	return &Handler{
-		consultation:   consultation,
-		sender:         sender,
-		webhookSecret:  webhookSecret,
-		processTimeout: processTimeout,
+		consultation: consultation,
+		requests:     requests,
+		sender:       sender,
+		cfg:          cfg,
 	}
 }
 
@@ -58,7 +74,7 @@ func NewHandler(consultation ConsultationService, sender MessageSender, webhookS
 // response and delivers the reply only through the send message API anyway.
 func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	receivedSecret := r.Header.Get("X-Max-Bot-Api-Secret")
-	if subtle.ConstantTimeCompare([]byte(receivedSecret), []byte(h.webhookSecret)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(receivedSecret), []byte(h.cfg.WebhookSecret)) != 1 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -80,7 +96,7 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer h.wg.Done()
 
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), h.processTimeout)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), h.cfg.ProcessTimeout)
 		defer cancel()
 		h.handleUpdate(ctx, update)
 	}()
@@ -108,17 +124,45 @@ func (h *Handler) handleUpdate(ctx context.Context, update Update) {
 		if msg.Sender != nil && msg.Sender.IsBot {
 			return
 		}
-		h.handleMessage(ctx, chat.ID{Platform: chat.MAX, ChatID: msg.Recipient.ChatID}, msg.Body.Text)
+		id := chat.ID{Platform: chat.MAX, ChatID: msg.Recipient.ChatID}
+		if phone := msg.Body.ContactPhone(); phone != "" {
+			h.submit(ctx, id, phone)
+			return
+		}
+		h.handleMessage(ctx, id, msg.Body.Text)
+
+	case updateMessageCallback:
+		h.handleCallback(ctx, update)
 	}
 }
 
 func (h *Handler) handleMessage(ctx context.Context, id chat.ID, text string) {
 	switch strings.TrimSpace(text) {
-	case "/start":
+	case "/start", "/new", chat.ButtonNewDialog:
 		h.restart(ctx, id)
 		return
-	case "/help":
-		h.send(ctx, id, helpText)
+	case "/help", chat.ButtonHelp:
+		h.send(ctx, id, helpText, FullMenu)
+		return
+	case "/requests", chat.ButtonRequests:
+		list, err := h.requests.List(ctx, id)
+		if err != nil {
+			slog.ErrorContext(ctx, "list requests", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
+			list = errorText
+		}
+		h.send(ctx, id, list, NoMenu)
+		return
+	case "/manager", chat.ButtonManager:
+		h.send(ctx, id, chat.ManagerText(h.cfg.ManagerContact), NoMenu)
+		return
+	case "/id":
+		// Helps to find the chat ID for MANAGER_CHAT_ID.
+		h.send(ctx, id, fmt.Sprintf("ID этого чата: %d", id.ChatID), NoMenu)
+		return
+	}
+
+	// The manager chat only receives requests: its messages aren't questions.
+	if id.ChatID == h.cfg.ManagerChatID {
 		return
 	}
 
@@ -133,11 +177,52 @@ func (h *Handler) handleMessage(ctx context.Context, id chat.ID, text string) {
 	stopTyping()
 	if err != nil {
 		slog.ErrorContext(ctx, "process consultation", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
-		h.send(ctx, id, fallbackText)
+		h.send(ctx, id, fallbackText, NoMenu)
 		return
 	}
 
-	h.send(ctx, id, answer)
+	h.send(ctx, id, answer, AnswerMenu)
+}
+
+func (h *Handler) submit(ctx context.Context, id chat.ID, phone string) {
+	reply, err := h.requests.Submit(ctx, id, phone)
+	if err != nil {
+		slog.ErrorContext(ctx, "submit request", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
+		reply = errorText
+	}
+	h.send(ctx, id, reply, NoMenu)
+}
+
+// handleCallback applies a status button pressed by the manager.
+func (h *Handler) handleCallback(ctx context.Context, update Update) {
+	cb := update.Callback
+	if cb == nil || cb.CallbackID == "" {
+		return
+	}
+	// Status buttons are only sent to the manager chat, so a press from any
+	// other chat is not the manager's.
+	msg := update.Message
+	if h.cfg.ManagerChatID == 0 || msg == nil || msg.Recipient == nil || msg.Recipient.ChatID != h.cfg.ManagerChatID {
+		return
+	}
+	requestID, status, ok := parseStatusPayload(cb.Payload)
+	if !ok {
+		return
+	}
+
+	req, changed, err := h.requests.SetStatus(ctx, requestID, status)
+	switch {
+	case err != nil:
+		slog.ErrorContext(ctx, "set request status", "request_id", requestID, "error", err)
+		err = h.sender.AnswerCallback(ctx, cb.CallbackID, nil, "Не удалось изменить статус, попробуйте ещё раз")
+	case !changed:
+		err = h.sender.AnswerCallback(ctx, cb.CallbackID, nil, "Статус заявки уже изменён")
+	default:
+		err = h.sender.AnswerCallback(ctx, cb.CallbackID, &req, fmt.Sprintf("Заявка №%d: %s", req.ID, req.Status.Title()))
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "answer max callback", "request_id", requestID, "error", err)
+	}
 }
 
 func (h *Handler) restart(ctx context.Context, id chat.ID) {
@@ -145,12 +230,19 @@ func (h *Handler) restart(ctx context.Context, id chat.ID) {
 		slog.ErrorContext(ctx, "reset consultation", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
 	}
 	h.consultation.Start(id)
-	h.send(ctx, id, welcomeText)
+	h.send(ctx, id, welcomeText, FullMenu)
 }
 
-func (h *Handler) send(ctx context.Context, id chat.ID, text string) {
-	for _, part := range chat.SplitText(text, maxMessageLimit) {
-		if err := h.sender.SendMessage(ctx, id.ChatID, part); err != nil {
+// send splits a long text into several messages; the menu goes under the
+// last one.
+func (h *Handler) send(ctx context.Context, id chat.ID, text string, menu Menu) {
+	parts := chat.SplitText(text, maxMessageLimit)
+	for i, part := range parts {
+		partMenu := NoMenu
+		if i == len(parts)-1 {
+			partMenu = menu
+		}
+		if err := h.sender.SendMessage(ctx, id.ChatID, part, partMenu); err != nil {
 			slog.ErrorContext(ctx, "send max message", "chat_id", id.ChatID, "error", err)
 			return
 		}

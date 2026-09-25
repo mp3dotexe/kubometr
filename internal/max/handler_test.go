@@ -5,12 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"kubometr/internal/chat"
+	"kubometr/internal/requests"
 )
 
 const testSecret = "test-secret"
@@ -47,12 +49,20 @@ func (m *mockConsultation) Process(_ context.Context, _ chat.ID, question string
 type sentMessage struct {
 	chatID int64
 	text   string
+	menu   Menu
+}
+
+type answeredCallback struct {
+	id           string
+	req          *requests.Request
+	notification string
 }
 
 type mockSender struct {
-	mu     sync.Mutex
-	sent   []sentMessage
-	events []string
+	mu        sync.Mutex
+	sent      []sentMessage
+	events    []string
+	callbacks []answeredCallback
 }
 
 func (m *mockSender) SendTyping(_ context.Context, chatID int64) error {
@@ -62,17 +72,55 @@ func (m *mockSender) SendTyping(_ context.Context, chatID int64) error {
 	return nil
 }
 
-func (m *mockSender) SendMessage(_ context.Context, chatID int64, text string) error {
+func (m *mockSender) SendMessage(_ context.Context, chatID int64, text string, menu Menu) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.sent = append(m.sent, sentMessage{chatID: chatID, text: text})
+	m.sent = append(m.sent, sentMessage{chatID: chatID, text: text, menu: menu})
 	m.events = append(m.events, "message")
 	return nil
 }
 
+func (m *mockSender) AnswerCallback(_ context.Context, id string, req *requests.Request, notification string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.callbacks = append(m.callbacks, answeredCallback{id, req, notification})
+	return nil
+}
+
+type mockRequests struct {
+	mu        sync.Mutex
+	submitted []string
+	statuses  []requests.Status
+}
+
+func (m *mockRequests) Submit(_ context.Context, _ chat.ID, phone string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.submitted = append(m.submitted, phone)
+	return "заявка принята", nil
+}
+
+func (m *mockRequests) List(context.Context, chat.ID) (string, error) {
+	return "список заявок", nil
+}
+
+func (m *mockRequests) SetStatus(_ context.Context, id int64, status requests.Status) (requests.Request, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statuses = append(m.statuses, status)
+	return requests.Request{ID: id, Status: status}, true, nil
+}
+
+const testManagerChat = -500
+
 func newTestHandler(consultation *mockConsultation) (*Handler, *mockSender) {
 	sender := &mockSender{}
-	return NewHandler(consultation, sender, testSecret, time.Second), sender
+	h := NewHandler(consultation, &mockRequests{}, sender, HandlerConfig{
+		WebhookSecret:  testSecret,
+		ManagerChatID:  testManagerChat,
+		ProcessTimeout: time.Second,
+	})
+	return h, sender
 }
 
 func serve(h *Handler, method, secret, body string) *httptest.ResponseRecorder {
@@ -145,7 +193,7 @@ func TestHandleWebhook_SendsAnswer(t *testing.T) {
 	if len(consultation.processed) != 1 || consultation.processed[0] != "test question" {
 		t.Errorf("processed = %v", consultation.processed)
 	}
-	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 12345, text: "test answer"}) {
+	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 12345, text: "test answer", menu: AnswerMenu}) {
 		t.Errorf("sent = %v", sender.sent)
 	}
 }
@@ -201,7 +249,7 @@ func TestHandleWebhook_BotStarted(t *testing.T) {
 	if len(consultation.started) != 1 || consultation.started[0] != want {
 		t.Errorf("started = %v, want [%v]", consultation.started, want)
 	}
-	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 555, text: welcomeText}) {
+	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 555, text: welcomeText, menu: FullMenu}) {
 		t.Errorf("sent = %v", sender.sent)
 	}
 }
@@ -237,5 +285,101 @@ func TestHandleWebhook_TypingBeforeAnswer(t *testing.T) {
 
 	if len(sender.events) < 2 || sender.events[0] != "typing" || sender.events[len(sender.events)-1] != "message" {
 		t.Fatalf("events = %v, want typing first and the answer last", sender.events)
+	}
+}
+
+func updateInChat(chatID int64, body string) string {
+	return `{"update_type": "message_created", "message": {` +
+		`"sender": {"user_id": 777, "name": "Иван"},` +
+		`"recipient": {"chat_id": ` + strconv.FormatInt(chatID, 10) + `, "chat_type": "dialog"},` +
+		`"body": ` + body + `}}`
+}
+
+func callbackUpdate(chatID int64, payload string) string {
+	return `{"update_type": "message_callback",` +
+		`"callback": {"callback_id": "cb-1", "payload": "` + payload + `"},` +
+		`"message": {"recipient": {"chat_id": ` + strconv.FormatInt(chatID, 10) + `}, "body": {"mid": "m-1", "text": "заявка"}}}`
+}
+
+func TestHandleWebhook_ContactSubmitsRequest(t *testing.T) {
+	consultation := &mockConsultation{}
+	h, sender := newTestHandler(consultation)
+
+	body := `{"attachments": [{"type": "contact", "payload": ` +
+		`{"vcf_info": "BEGIN:VCARD\r\nVERSION:3.0\r\nTEL;TYPE=cell:79991234567\r\nEND:VCARD\r\n"}}]}`
+	serve(h, http.MethodPost, testSecret, updateInChat(12345, body))
+
+	if got := h.requests.(*mockRequests).submitted; len(got) != 1 || got[0] != "79991234567" {
+		t.Fatalf("submitted = %v, want [79991234567]", got)
+	}
+	if len(consultation.processed) != 0 {
+		t.Fatal("contact was sent to the consultant")
+	}
+	if len(sender.sent) != 1 || sender.sent[0].text != "заявка принята" {
+		t.Fatalf("sent = %+v", sender.sent)
+	}
+}
+
+func TestHandleWebhook_MenuButtons(t *testing.T) {
+	cases := map[string]string{
+		chat.ButtonRequests: "список заявок",
+		"/requests":         "список заявок",
+		chat.ButtonManager:  "Менеджер ответит",
+		chat.ButtonHelp:     "Опишите задачу",
+		"/id":               "ID этого чата: 12345",
+	}
+
+	for text, want := range cases {
+		consultation := &mockConsultation{}
+		h, sender := newTestHandler(consultation)
+
+		serve(h, http.MethodPost, testSecret, messageUpdate(text))
+
+		if len(sender.sent) != 1 || !strings.Contains(sender.sent[0].text, want) {
+			t.Errorf("%q: sent = %+v, want %q", text, sender.sent, want)
+		}
+		if len(consultation.processed) != 0 {
+			t.Errorf("%q went to the consultant", text)
+		}
+	}
+}
+
+func TestHandleWebhook_IgnoresChatterInManagerChat(t *testing.T) {
+	consultation := &mockConsultation{answer: "test answer"}
+	h, sender := newTestHandler(consultation)
+
+	serve(h, http.MethodPost, testSecret, updateInChat(testManagerChat, `{"text": "беру заявку"}`))
+
+	if len(consultation.processed) != 0 || len(sender.sent) != 0 {
+		t.Fatalf("processed = %v, sent = %+v, want nothing", consultation.processed, sender.sent)
+	}
+}
+
+func TestHandleWebhook_ManagerChangesStatus(t *testing.T) {
+	h, sender := newTestHandler(&mockConsultation{})
+
+	serve(h, http.MethodPost, testSecret, callbackUpdate(testManagerChat, "request:7:in_progress"))
+
+	if got := h.requests.(*mockRequests).statuses; len(got) != 1 || got[0] != requests.StatusInProgress {
+		t.Fatalf("statuses = %v, want [in_progress]", got)
+	}
+	if len(sender.callbacks) != 1 || sender.callbacks[0].id != "cb-1" || sender.callbacks[0].req == nil {
+		t.Fatalf("callbacks = %+v, want the manager message redrawn", sender.callbacks)
+	}
+}
+
+func TestHandleWebhook_IgnoresStatusFromOtherChats(t *testing.T) {
+	for _, payload := range []string{"request:7:done", "request:7:new", "request:x:done", "other"} {
+		chatID := int64(testManagerChat)
+		if payload == "request:7:done" {
+			chatID = 12345 // a valid button, but pressed outside the manager chat
+		}
+		h, sender := newTestHandler(&mockConsultation{})
+
+		serve(h, http.MethodPost, testSecret, callbackUpdate(chatID, payload))
+
+		if got := h.requests.(*mockRequests).statuses; len(got) != 0 || len(sender.callbacks) != 0 {
+			t.Errorf("%q in chat %d: statuses = %v, callbacks = %+v, want none", payload, chatID, got, sender.callbacks)
+		}
 	}
 }
