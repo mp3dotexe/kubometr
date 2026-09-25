@@ -16,33 +16,25 @@ import (
 )
 
 // Menu is the inline keyboard attached to a message. MAX has no persistent
-// reply keyboard, so the buttons travel with the bot's messages; a message
-// button sends its label as the client's message, like a Telegram button.
+// reply keyboard, so the menu goes under every message to a client, the way
+// Telegram keeps it under the input field; a message button sends its label
+// as the client's message, like a Telegram button.
 type Menu int
 
 const (
 	NoMenu Menu = iota
-	// FullMenu goes under the welcome and help messages.
-	FullMenu
-	// AnswerMenu goes under consultant answers: the request button right
-	// next to the recommendation, and the way back to the full menu.
-	AnswerMenu
+	MainMenu
 )
 
 func (m Menu) keyboard() *maxbot.Keyboard {
-	switch m {
-	case FullMenu:
-		return maxbot.InlineKeyboard(
-			maxbot.Row(maxbot.BtnContact(chat.ButtonSubmit)),
-			maxbot.Row(maxbot.BtnMsg(chat.ButtonRequests), maxbot.BtnMsg(chat.ButtonManager)),
-			maxbot.Row(maxbot.BtnMsg(chat.ButtonNewDialog), maxbot.BtnMsg(chat.ButtonHelp)),
-		)
-	case AnswerMenu:
-		return maxbot.InlineKeyboard(
-			maxbot.Row(maxbot.BtnContact(chat.ButtonSubmit), maxbot.BtnMsg(chat.ButtonHelp)),
-		)
+	if m != MainMenu {
+		return nil
 	}
-	return nil
+	return maxbot.InlineKeyboard(
+		maxbot.Row(maxbot.BtnContact(chat.ButtonSubmit)),
+		maxbot.Row(maxbot.BtnMsg(chat.ButtonRequests), maxbot.BtnMsg(chat.ButtonManager)),
+		maxbot.Row(maxbot.BtnMsg(chat.ButtonNewDialog), maxbot.BtnMsg(chat.ButtonHelp)),
+	)
 }
 
 type Client struct {

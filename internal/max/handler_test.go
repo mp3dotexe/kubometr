@@ -193,7 +193,7 @@ func TestHandleWebhook_SendsAnswer(t *testing.T) {
 	if len(consultation.processed) != 1 || consultation.processed[0] != "test question" {
 		t.Errorf("processed = %v", consultation.processed)
 	}
-	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 12345, text: "test answer", menu: AnswerMenu}) {
+	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 12345, text: "test answer", menu: MainMenu}) {
 		t.Errorf("sent = %v", sender.sent)
 	}
 }
@@ -249,7 +249,7 @@ func TestHandleWebhook_BotStarted(t *testing.T) {
 	if len(consultation.started) != 1 || consultation.started[0] != want {
 		t.Errorf("started = %v, want [%v]", consultation.started, want)
 	}
-	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 555, text: welcomeText, menu: FullMenu}) {
+	if len(sender.sent) != 1 || sender.sent[0] != (sentMessage{chatID: 555, text: welcomeText, menu: MainMenu}) {
 		t.Errorf("sent = %v", sender.sent)
 	}
 }
@@ -335,12 +335,23 @@ func TestHandleWebhook_MenuButtons(t *testing.T) {
 
 		serve(h, http.MethodPost, testSecret, messageUpdate(text))
 
-		if len(sender.sent) != 1 || !strings.Contains(sender.sent[0].text, want) {
-			t.Errorf("%q: sent = %+v, want %q", text, sender.sent, want)
+		// Every reply to a client carries the menu, so nothing is a dead end.
+		if len(sender.sent) != 1 || !strings.Contains(sender.sent[0].text, want) || sender.sent[0].menu != MainMenu {
+			t.Errorf("%q: sent = %+v, want %q with the menu", text, sender.sent, want)
 		}
 		if len(consultation.processed) != 0 {
 			t.Errorf("%q went to the consultant", text)
 		}
+	}
+}
+
+func TestHandleWebhook_NoClientMenuInManagerChat(t *testing.T) {
+	h, sender := newTestHandler(&mockConsultation{})
+
+	serve(h, http.MethodPost, testSecret, updateInChat(testManagerChat, `{"text": "/id"}`))
+
+	if len(sender.sent) != 1 || sender.sent[0].menu != NoMenu {
+		t.Fatalf("sent = %+v, want the chat ID without the menu", sender.sent)
 	}
 }
 

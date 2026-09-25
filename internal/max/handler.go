@@ -142,7 +142,7 @@ func (h *Handler) handleMessage(ctx context.Context, id chat.ID, text string) {
 		h.restart(ctx, id)
 		return
 	case "/help", chat.ButtonHelp:
-		h.send(ctx, id, helpText, FullMenu)
+		h.send(ctx, id, helpText)
 		return
 	case "/requests", chat.ButtonRequests:
 		list, err := h.requests.List(ctx, id)
@@ -150,14 +150,14 @@ func (h *Handler) handleMessage(ctx context.Context, id chat.ID, text string) {
 			slog.ErrorContext(ctx, "list requests", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
 			list = errorText
 		}
-		h.send(ctx, id, list, NoMenu)
+		h.send(ctx, id, list)
 		return
 	case "/manager", chat.ButtonManager:
-		h.send(ctx, id, chat.ManagerText(h.cfg.ManagerContact), NoMenu)
+		h.send(ctx, id, chat.ManagerText(h.cfg.ManagerContact))
 		return
 	case "/id":
 		// Helps to find the chat ID for MANAGER_CHAT_ID.
-		h.send(ctx, id, fmt.Sprintf("ID этого чата: %d", id.ChatID), NoMenu)
+		h.send(ctx, id, fmt.Sprintf("ID этого чата: %d", id.ChatID))
 		return
 	}
 
@@ -177,11 +177,11 @@ func (h *Handler) handleMessage(ctx context.Context, id chat.ID, text string) {
 	stopTyping()
 	if err != nil {
 		slog.ErrorContext(ctx, "process consultation", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
-		h.send(ctx, id, fallbackText, NoMenu)
+		h.send(ctx, id, fallbackText)
 		return
 	}
 
-	h.send(ctx, id, answer, AnswerMenu)
+	h.send(ctx, id, answer)
 }
 
 func (h *Handler) submit(ctx context.Context, id chat.ID, phone string) {
@@ -190,7 +190,7 @@ func (h *Handler) submit(ctx context.Context, id chat.ID, phone string) {
 		slog.ErrorContext(ctx, "submit request", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
 		reply = errorText
 	}
-	h.send(ctx, id, reply, NoMenu)
+	h.send(ctx, id, reply)
 }
 
 // handleCallback applies a status button pressed by the manager.
@@ -230,17 +230,17 @@ func (h *Handler) restart(ctx context.Context, id chat.ID) {
 		slog.ErrorContext(ctx, "reset consultation", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
 	}
 	h.consultation.Start(id)
-	h.send(ctx, id, welcomeText, FullMenu)
+	h.send(ctx, id, welcomeText)
 }
 
 // send splits a long text into several messages; the menu goes under the
-// last one.
-func (h *Handler) send(ctx context.Context, id chat.ID, text string, menu Menu) {
+// last one. The manager chat gets no menu: its buttons are for clients.
+func (h *Handler) send(ctx context.Context, id chat.ID, text string) {
 	parts := chat.SplitText(text, maxMessageLimit)
 	for i, part := range parts {
 		partMenu := NoMenu
-		if i == len(parts)-1 {
-			partMenu = menu
+		if i == len(parts)-1 && id.ChatID != h.cfg.ManagerChatID {
+			partMenu = MainMenu
 		}
 		if err := h.sender.SendMessage(ctx, id.ChatID, part, partMenu); err != nil {
 			slog.ErrorContext(ctx, "send max message", "chat_id", id.ChatID, "error", err)

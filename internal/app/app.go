@@ -99,7 +99,7 @@ func Run() error {
 		case id.Platform == chat.Telegram && tg != nil:
 			return tg.SendText(ctx, id.ChatID, text)
 		case id.Platform == chat.MAX && maxClient != nil:
-			return maxClient.SendMessage(ctx, id.ChatID, text, max.NoMenu)
+			return maxClient.SendMessage(ctx, id.ChatID, text, max.MainMenu)
 		}
 		return fmt.Errorf("messenger %s is not enabled", id.Platform)
 	}
