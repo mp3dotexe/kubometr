@@ -35,6 +35,8 @@ type Config struct {
 	AIRateLimit      time.Duration
 	MaxPromptLength  int
 	MaxConcurrentAI  int
+	ManagerChatID    int64
+	ManagerContact   string
 
 	PostgresHost     string
 	PostgresPort     int
@@ -64,6 +66,18 @@ func Load() (Config, error) {
 	}
 
 	proxyURL := strings.TrimSpace(os.Getenv("PROXY_URL"))
+
+	// Group chat IDs in MAX are negative, so any non-zero number is valid.
+	var managerChatID int64
+	if value := strings.TrimSpace(os.Getenv("MANAGER_CHAT_ID")); value != "" {
+		managerChatID, err = strconv.ParseInt(value, 10, 64)
+		if err != nil || managerChatID == 0 {
+			return Config{}, errors.New("MANAGER_CHAT_ID must be a non-zero MAX chat ID")
+		}
+		if maxToken == "" {
+			return Config{}, errors.New("MANAGER_CHAT_ID is a MAX chat and requires MAX_TOKEN")
+		}
+	}
 
 	aiAPIKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	if aiAPIKey == "" {
@@ -135,6 +149,8 @@ func Load() (Config, error) {
 		AIRateLimit:      aiRateLimit,
 		MaxPromptLength:  maxPromptLength,
 		MaxConcurrentAI:  maxConcurrentAI,
+		ManagerChatID:    managerChatID,
+		ManagerContact:   strings.TrimSpace(os.Getenv("MANAGER_CONTACT")),
 		PostgresHost:     host,
 		PostgresPort:     port,
 		PostgresUser:     user,

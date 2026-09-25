@@ -14,6 +14,8 @@ func setRequired(t *testing.T) {
 	t.Setenv("MAX_WEBHOOK_SECRET", "")
 	t.Setenv("OPENROUTER_API_KEY", "api-key")
 	t.Setenv("AI_MODEL", "")
+	t.Setenv("MANAGER_CHAT_ID", "")
+	t.Setenv("MANAGER_CONTACT", "")
 	t.Setenv("POSTGRES_USER", "postgres")
 	t.Setenv("POSTGRES_PASSWORD", "password")
 	t.Setenv("POSTGRES_DB", "kubometr_db")
@@ -129,5 +131,34 @@ func TestLoadAIModelList(t *testing.T) {
 		if !slices.Equal(cfg.AIModels, want) {
 			t.Errorf("AI_MODEL=%q: AIModels = %q, want %q", value, cfg.AIModels, want)
 		}
+	}
+}
+
+func TestLoadManagerChat(t *testing.T) {
+	setRequired(t)
+	t.Setenv("MAX_TOKEN", "max-token")
+	t.Setenv("MAX_WEBHOOK_SECRET", "secret")
+	t.Setenv("MANAGER_CHAT_ID", "-68123")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ManagerChatID != -68123 {
+		t.Fatalf("ManagerChatID = %d, want -68123", cfg.ManagerChatID)
+	}
+
+	for _, value := range []string{"0", "abc"} {
+		t.Setenv("MANAGER_CHAT_ID", value)
+		if _, err := Load(); err == nil {
+			t.Errorf("MANAGER_CHAT_ID=%q: Load() error = nil, want error", value)
+		}
+	}
+
+	// The manager chat is in MAX, so it needs the MAX bot.
+	t.Setenv("MANAGER_CHAT_ID", "-68123")
+	t.Setenv("MAX_TOKEN", "")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "MAX_TOKEN") {
+		t.Fatalf("Load() error = %v, want MAX_TOKEN error", err)
 	}
 }
