@@ -25,7 +25,6 @@ type Message struct {
 }
 
 type MessageBody struct {
-	Mid         string       `json:"mid"`
 	Text        string       `json:"text"`
 	Attachments []Attachment `json:"attachments"`
 }

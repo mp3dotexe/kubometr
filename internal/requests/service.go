@@ -75,10 +75,9 @@ func (s Status) clientText(id int64) string {
 		return fmt.Sprintf("📦 Заявка №%d готова, можно забирать!", id)
 	case StatusIssued:
 		return fmt.Sprintf("✅ Заявка №%d выдана. Спасибо, что выбрали Кубометр!", id)
-	case StatusCancelled:
-		return fmt.Sprintf("❌ Заявка №%d отменена. Если это ошибка, свяжитесь с менеджером или оформите новую заявку.", id)
 	}
-	return fmt.Sprintf("Заявка №%d: %s.", id, s.Title())
+	// Cancelled: a request can't move back to "new".
+	return fmt.Sprintf("❌ Заявка №%d отменена. Если это ошибка, свяжитесь с менеджером или оформите новую заявку.", id)
 }
 
 type Request struct {
