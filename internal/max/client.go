@@ -2,14 +2,15 @@ package max
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
 	maxbot "github.com/max-messenger/max-bot-api-client-go"
 )
 
-type Client struct{
-	api 	*maxbot.Api
+type Client struct {
+	api *maxbot.Api
 }
 
 func NewClient(token string, httpClient *http.Client) (*Client, error) {
@@ -25,6 +26,24 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) err
 	err := c.api.Messages.Send(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("send message: %w", err)
+	}
+	return nil
+}
+
+// Subscribe registers webhookURL so MAX starts delivering updates to it.
+// Registering the same URL again just updates the subscription.
+func (c *Client) Subscribe(ctx context.Context, webhookURL, secret string) error {
+	result, err := c.api.Subscriptions.Subscribe(
+		ctx,
+		webhookURL,
+		[]string{updateMessageCreated, updateBotStarted},
+		secret,
+	)
+	if err != nil {
+		return fmt.Errorf("subscribe webhook: %w", err)
+	}
+	if !result.Success {
+		return errors.New("subscribe webhook: " + result.Message)
 	}
 	return nil
 }

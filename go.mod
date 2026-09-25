@@ -9,6 +9,7 @@ require (
 	github.com/max-messenger/max-bot-api-client-go v1.7.1
 	github.com/openai/openai-go v1.12.0
 	golang.org/x/net v0.58.0
+	golang.org/x/sync v0.22.0
 )
 
 require (
@@ -19,6 +20,5 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 )

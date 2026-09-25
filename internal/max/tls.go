@@ -1,11 +1,12 @@
 package max
 
-import(
+import (
 	"crypto/tls"
 	"crypto/x509"
 	_ "embed"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 //go:embed certs/russian_trusted_root_ca.cer
@@ -31,5 +32,5 @@ func NewTrustedHTTPClient() (*http.Client, error) {
 		TLSClientConfig: &tls.Config{RootCAs: pool},
 	}
 
-	return &http.Client{Transport: transport}, nil
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}, nil
 }

@@ -12,18 +12,19 @@ import (
 )
 
 type Config struct {
-	BotToken        string
-	MaxToken        string
-	MaxWebhookSecret	string
-	MaxPort			int
-	ProxyURL		string
-	AIAPIKey        string
-	AIBaseURL       string
-	AIModel         string
-	AITimeout       time.Duration
-	AIRateLimit     time.Duration
-	MaxPromptLength int
-	MaxConcurrentAI int
+	BotToken         string
+	ProxyURL         string
+	MaxToken         string
+	MaxWebhookSecret string
+	MaxWebhookURL    string
+	MaxPort          int
+	AIAPIKey         string
+	AIBaseURL        string
+	AIModel          string
+	AITimeout        time.Duration
+	AIRateLimit      time.Duration
+	MaxPromptLength  int
+	MaxConcurrentAI  int
 
 	PostgresHost     string
 	PostgresPort     int
@@ -41,8 +42,11 @@ func Load() (Config, error) {
 
 	maxToken := strings.TrimSpace(os.Getenv("MAX_TOKEN"))
 	maxWebhookSecret := strings.TrimSpace(os.Getenv("MAX_WEBHOOK_SECRET"))
-	if maxToken != "" && maxWebhookSecret == ""{
+	if maxToken != "" && maxWebhookSecret == "" {
 		return Config{}, errors.New("MAX_WEBHOOK_SECRET is required when MAX_TOKEN is set")
+	}
+	if token == "" && maxToken == "" {
+		return Config{}, errors.New("at least one of BOT_TOKEN or MAX_TOKEN is required")
 	}
 	maxPort, err := intFromEnv("MAX_PORT", 8080)
 	if err != nil {
@@ -54,9 +58,6 @@ func Load() (Config, error) {
 	aiAPIKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	if aiAPIKey == "" {
 		return Config{}, errors.New("OPENROUTER_API_KEY is required")
-	}
-	if token == "" {
-		return Config{}, errors.New("BOT_TOKEN is required")
 	}
 
 	aiTimeout, err := durationFromEnv("AI_TIMEOUT", 30*time.Second)
@@ -106,10 +107,11 @@ func Load() (Config, error) {
 
 	return Config{
 		BotToken:         token,
+		ProxyURL:         proxyURL,
 		MaxToken:         maxToken,
 		MaxWebhookSecret: maxWebhookSecret,
-		MaxPort: 		  maxPort,
-		ProxyURL: 		  proxyURL,
+		MaxWebhookURL:    strings.TrimSpace(os.Getenv("MAX_WEBHOOK_URL")),
+		MaxPort:          maxPort,
 		AIAPIKey:         aiAPIKey,
 		AIBaseURL:        stringFromEnv("AI_BASE_URL", "https://openrouter.ai/api/v1"),
 		AIModel:          stringFromEnv("AI_MODEL", "openai/gpt-oss-20b:free"),
