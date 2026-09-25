@@ -380,9 +380,9 @@ func TestHandleWebhook_ManagerChangesStatus(t *testing.T) {
 }
 
 func TestHandleWebhook_IgnoresStatusFromOtherChats(t *testing.T) {
-	for _, payload := range []string{"request:7:done", "request:7:new", "request:x:done", "other"} {
+	for _, payload := range []string{"request:7:issued", "request:x:issued", "other"} {
 		chatID := int64(testManagerChat)
-		if payload == "request:7:done" {
+		if payload == "request:7:issued" {
 			chatID = 12345 // a valid button, but pressed outside the manager chat
 		}
 		h, sender := newTestHandler(&mockConsultation{})

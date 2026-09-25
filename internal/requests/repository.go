@@ -33,13 +33,14 @@ const listQuery = `
 	LIMIT $2
 `
 
-// setStatusQuery changes the status only when it differs, so a repeated
-// button press doesn't notify the client twice.
+// setStatusQuery changes the status only from the statuses allowed to lead
+// to it, so a repeated or stale button press changes nothing and doesn't
+// notify the client twice.
 const setStatusQuery = `
 	UPDATE requests r
 	SET status = $2
 	FROM users u
-	WHERE r.id = $1 AND r.status <> $2 AND u.id = r.user_id
+	WHERE r.id = $1 AND r.status = ANY($3) AND u.id = r.user_id
 	RETURNING r.id, r.phone, r.question, r.answer, r.status, r.created_at, u.platform, u.external_id
 `
 
@@ -65,9 +66,9 @@ func (r *Repository) List(ctx context.Context, userID int64, limit int) ([]Reque
 }
 
 // SetStatus returns the updated request with its client chat, or ok = false
-// when the request doesn't exist or already has this status.
+// when the request doesn't exist or can't move to this status.
 func (r *Repository) SetStatus(ctx context.Context, id int64, status Status) (req Request, ok bool, err error) {
-	err = r.pool.QueryRow(ctx, setStatusQuery, id, status).Scan(
+	err = r.pool.QueryRow(ctx, setStatusQuery, id, status, status.previous()).Scan(
 		&req.ID, &req.Phone, &req.Question, &req.Answer, &req.Status, &req.CreatedAt,
 		&req.Client.Platform, &req.Client.ChatID,
 	)

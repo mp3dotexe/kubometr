@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,17 +20,65 @@ type Status string
 const (
 	StatusNew        Status = "new"
 	StatusInProgress Status = "in_progress"
-	StatusDone       Status = "done"
+	StatusReady      Status = "ready"
+	StatusIssued     Status = "issued"
+	StatusCancelled  Status = "cancelled"
 )
+
+var allStatuses = []Status{StatusNew, StatusInProgress, StatusReady, StatusIssued, StatusCancelled}
 
 func (s Status) Title() string {
 	switch s {
 	case StatusInProgress:
 		return "🔧 В работе"
-	case StatusDone:
-		return "✅ Выполнена"
+	case StatusReady:
+		return "📦 Готова"
+	case StatusIssued:
+		return "✅ Выдана"
+	case StatusCancelled:
+		return "❌ Отменена"
 	}
 	return "🆕 Принята"
+}
+
+// Next lists the statuses the manager can move a request to. An issued or
+// cancelled request is closed.
+func (s Status) Next() []Status {
+	switch s {
+	case StatusNew:
+		return []Status{StatusInProgress, StatusReady, StatusCancelled}
+	case StatusInProgress:
+		return []Status{StatusReady, StatusCancelled}
+	case StatusReady:
+		return []Status{StatusIssued, StatusCancelled}
+	}
+	return nil
+}
+
+// previous lists the statuses a request can move to s from.
+func (s Status) previous() []string {
+	var from []string
+	for _, status := range allStatuses {
+		if slices.Contains(status.Next(), s) {
+			from = append(from, string(status))
+		}
+	}
+	return from
+}
+
+// clientText tells the client about a status change.
+func (s Status) clientText(id int64) string {
+	switch s {
+	case StatusInProgress:
+		return fmt.Sprintf("🔧 Заявка №%d в работе: менеджер собирает заказ.", id)
+	case StatusReady:
+		return fmt.Sprintf("📦 Заявка №%d готова, можно забирать!", id)
+	case StatusIssued:
+		return fmt.Sprintf("✅ Заявка №%d выдана. Спасибо, что выбрали Кубометр!", id)
+	case StatusCancelled:
+		return fmt.Sprintf("❌ Заявка №%d отменена. Если это ошибка, свяжитесь с менеджером или оформите новую заявку.", id)
+	}
+	return fmt.Sprintf("Заявка №%d: %s.", id, s.Title())
 }
 
 type Request struct {
@@ -186,18 +235,15 @@ func preview(question string) string {
 }
 
 // SetStatus moves a request to a new status and tells the client. ok is
-// false when the request doesn't exist or already has this status.
+// false when the request doesn't exist or can't move to this status, e.g.
+// the button was pressed twice.
 func (s *Service) SetStatus(ctx context.Context, id int64, status Status) (Request, bool, error) {
 	req, ok, err := s.repo.SetStatus(ctx, id, status)
 	if err != nil || !ok {
 		return req, ok, err
 	}
 
-	text := fmt.Sprintf("Заявка №%d: %s.", req.ID, req.Status.Title())
-	if status == StatusDone {
-		text += "\n\nСпасибо, что выбрали Кубометр!"
-	}
-	if err := s.notifyClient(ctx, req.Client, text); err != nil {
+	if err := s.notifyClient(ctx, req.Client, status.clientText(req.ID)); err != nil {
 		slog.ErrorContext(ctx, "notify client about request status", "request_id", req.ID, "error", err)
 	}
 	return req, true, nil

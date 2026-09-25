@@ -116,19 +116,25 @@ func requestMessage(req requests.Request) *schemes.NewMessageBody {
 	return body
 }
 
-// statusKeyboard offers the statuses a request can still move to.
+// statusKeyboard offers the statuses a request can still move to, with
+// cancelling on its own row so it isn't pressed by accident.
 func statusKeyboard(req requests.Request) *maxbot.Keyboard {
-	var row []schemes.ButtonInterface
-	if req.Status == requests.StatusNew {
-		row = append(row, maxbot.Btn(requests.StatusInProgress.Title(), statusPayload(req.ID, requests.StatusInProgress)))
+	var row, cancelRow []schemes.ButtonInterface
+	for _, status := range req.Status.Next() {
+		payload := statusPayload(req.ID, status)
+		switch status {
+		case requests.StatusCancelled:
+			cancelRow = append(cancelRow, maxbot.Btn(status.Title(), payload, schemes.NEGATIVE))
+		case requests.StatusInProgress:
+			row = append(row, maxbot.Btn(status.Title(), payload))
+		default:
+			row = append(row, maxbot.Btn(status.Title(), payload, schemes.POSITIVE))
+		}
 	}
-	if req.Status != requests.StatusDone {
-		row = append(row, maxbot.Btn(requests.StatusDone.Title(), statusPayload(req.ID, requests.StatusDone), schemes.POSITIVE))
-	}
-	if row == nil {
+	if row == nil && cancelRow == nil {
 		return nil
 	}
-	return maxbot.InlineKeyboard(row)
+	return maxbot.InlineKeyboard(row, cancelRow)
 }
 
 const statusPayloadPrefix = "request:"
@@ -145,11 +151,11 @@ func parseStatusPayload(payload string) (id int64, status requests.Status, ok bo
 	}
 	idText, statusText, found := strings.Cut(rest, ":")
 	id, err := strconv.ParseInt(idText, 10, 64)
-	status = requests.Status(statusText)
-	if !found || err != nil || (status != requests.StatusInProgress && status != requests.StatusDone) {
+	if !found || err != nil {
 		return 0, "", false
 	}
-	return id, status, true
+	// Whether the request may move to this status is checked when it's saved.
+	return id, requests.Status(statusText), true
 }
 
 // Subscribe registers webhookURL so MAX starts delivering updates to it.

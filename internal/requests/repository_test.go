@@ -49,11 +49,15 @@ func TestRepositoryCreateListSetStatus(t *testing.T) {
 		t.Fatalf("updated = %+v, want in_progress for %+v", updated, owner)
 	}
 
-	// The same status again is not a change, and neither is a missing request.
+	// The same status again is not a change, skipping "ready" is not allowed,
+	// and a missing request changes nothing.
 	if _, ok, err := repo.SetStatus(ctx, created.ID, StatusInProgress); err != nil || ok {
 		t.Fatalf("repeated SetStatus() = %v, %v, want false", ok, err)
 	}
-	if _, ok, err := repo.SetStatus(ctx, created.ID+100, StatusDone); err != nil || ok {
+	if _, ok, err := repo.SetStatus(ctx, created.ID, StatusIssued); err != nil || ok {
+		t.Fatalf("SetStatus(issued) before ready = %v, %v, want false", ok, err)
+	}
+	if _, ok, err := repo.SetStatus(ctx, created.ID+100, StatusCancelled); err != nil || ok {
 		t.Fatalf("SetStatus(missing) = %v, %v, want false", ok, err)
 	}
 }

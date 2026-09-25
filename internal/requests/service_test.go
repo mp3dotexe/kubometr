@@ -3,6 +3,7 @@ package requests
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func (f *fakeRepo) List(context.Context, int64, int) ([]Request, error) {
 
 func (f *fakeRepo) SetStatus(_ context.Context, id int64, status Status) (Request, bool, error) {
 	for i := range f.created {
-		if f.created[i].ID == id && f.created[i].Status != status {
+		if f.created[i].ID == id && slices.Contains(status.previous(), string(f.created[i].Status)) {
 			f.created[i].Status = status
 			return f.created[i], true, nil
 		}
@@ -143,8 +144,36 @@ func TestSetStatusNotifiesClientOnce(t *testing.T) {
 		}
 	}
 
-	if len(*toClient) != 1 || (*toClient)[0].to != client || !strings.Contains((*toClient)[0].text, "В работе") {
-		t.Fatalf("client got %+v, want one «В работе» message", *toClient)
+	if len(*toClient) != 1 || (*toClient)[0].to != client || !strings.Contains((*toClient)[0].text, "в работе") {
+		t.Fatalf("client got %+v, want one «в работе» message", *toClient)
+	}
+}
+
+func TestSetStatusFollowsTransitions(t *testing.T) {
+	s, _, _, toClient := newTestService(dialog, nil)
+	if _, err := s.Submit(context.Background(), client, "+79991234567"); err != nil {
+		t.Fatal(err)
+	}
+
+	steps := []struct {
+		status Status
+		ok     bool
+	}{
+		{StatusIssued, false}, // can't be issued before it is ready
+		{StatusReady, true},
+		{StatusInProgress, false}, // no way back
+		{StatusIssued, true},
+		{StatusCancelled, false}, // closed
+	}
+	for _, step := range steps {
+		_, ok, err := s.SetStatus(context.Background(), 1, step.status)
+		if err != nil || ok != step.ok {
+			t.Fatalf("SetStatus(%s) = %v, %v, want %v", step.status, ok, err, step.ok)
+		}
+	}
+
+	if len(*toClient) != 2 || !strings.Contains((*toClient)[0].text, "можно забирать") || !strings.Contains((*toClient)[1].text, "выдана") {
+		t.Fatalf("client got %+v", *toClient)
 	}
 }
 
