@@ -20,6 +20,7 @@ import (
 	"kubometr/internal/state"
 	"kubometr/internal/telegram"
 	"kubometr/internal/users"
+	"kubometr/migrations"
 )
 
 func Run() error {
@@ -38,6 +39,10 @@ func Run() error {
 		return fmt.Errorf("create database pool: %w", err)
 	}
 	defer pool.Close()
+
+	if err := database.Migrate(ctx, pool, migrations.FS); err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
 
 	s := state.New()
 
