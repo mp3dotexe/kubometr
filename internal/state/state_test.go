@@ -1,11 +1,17 @@
 package state
 
-import "testing"
+import (
+	"testing"
+
+	"kubometr/internal/chat"
+)
+
+var testChat = chat.ID{Platform: chat.Telegram, ChatID: 42}
 
 func TestStateManagerDefaultsToIdle(t *testing.T) {
 	sm := New()
 
-	if got := sm.Get(42); got != StateIdle {
+	if got := sm.Get(testChat); got != StateIdle {
 		t.Fatalf("Get() = %q, want %q", got, StateIdle)
 	}
 }
@@ -13,13 +19,23 @@ func TestStateManagerDefaultsToIdle(t *testing.T) {
 func TestStateManagerSetAndDelete(t *testing.T) {
 	sm := New()
 
-	sm.Set(42, StateConsultation)
-	if got := sm.Get(42); got != StateConsultation {
+	sm.Set(testChat, StateConsultation)
+	if got := sm.Get(testChat); got != StateConsultation {
 		t.Fatalf("Get() after Set() = %q, want %q", got, StateConsultation)
 	}
 
-	sm.Delete(42)
-	if got := sm.Get(42); got != StateIdle {
+	sm.Delete(testChat)
+	if got := sm.Get(testChat); got != StateIdle {
 		t.Fatalf("Get() after Delete() = %q, want %q", got, StateIdle)
+	}
+}
+
+func TestStateManagerSeparatesPlatforms(t *testing.T) {
+	sm := New()
+
+	sm.Set(chat.ID{Platform: chat.Telegram, ChatID: 1}, StateConsultation)
+
+	if got := sm.Get(chat.ID{Platform: chat.MAX, ChatID: 1}); got != StateIdle {
+		t.Fatalf("MAX chat state = %q, want %q", got, StateIdle)
 	}
 }

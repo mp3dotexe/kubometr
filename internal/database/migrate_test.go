@@ -85,8 +85,14 @@ func TestMigrateAppliesAllAndIsIdempotent(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT version FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 1 {
-		t.Fatalf("version = %d, want 1", version)
+	if version != 2 {
+		t.Fatalf("version = %d, want 2", version)
+	}
+
+	// Same external ID on different platforms must be two different users.
+	_, err := pool.Exec(ctx, `INSERT INTO users (platform, external_id) VALUES ('telegram', 1), ('max', 1)`)
+	if err != nil {
+		t.Fatalf("insert users: %v", err)
 	}
 }
 
@@ -111,12 +117,13 @@ func TestMigrateAdoptsManuallyCreatedSchema(t *testing.T) {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
-	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE telegram_id = 42`).Scan(&count); err != nil {
-		t.Fatalf("count users: %v", err)
+	var platform string
+	err = pool.QueryRow(ctx, `SELECT platform FROM users WHERE external_id = 42`).Scan(&platform)
+	if err != nil {
+		t.Fatalf("select migrated user: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("users with telegram_id 42 = %d, want 1", count)
+	if platform != "telegram" {
+		t.Fatalf("platform = %q, want telegram", platform)
 	}
 }
 

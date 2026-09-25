@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"kubometr/internal/ai"
+	"kubometr/internal/chat"
 	"kubometr/internal/history"
 	"kubometr/internal/state"
 )
@@ -13,9 +14,9 @@ type aiCompleter interface {
 }
 
 type stateStore interface {
-	Get(chatID int64) state.UserState
-	Set(chatID int64, userState state.UserState)
-	Delete(chatID int64) 
+	Get(id chat.ID) state.UserState
+	Set(id chat.ID, userState state.UserState)
+	Delete(id chat.ID)
 }
 
 type historyStore interface {
@@ -25,5 +26,5 @@ type historyStore interface {
 }
 
 type userStore interface {
-	GetOrCreate(ctx context.Context, chatID int64) (int64, error)
+	GetOrCreate(ctx context.Context, id chat.ID) (int64, error)
 }

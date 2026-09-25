@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"kubometr/internal/chat"
 	"kubometr/internal/history"
 	"kubometr/internal/state"
 )
@@ -32,7 +33,7 @@ type Service struct {
 	maxPromptLength int
 	aiLimiter       chan struct{}
 	mu              sync.Mutex
-	lastAIRequest   map[int64]time.Time
+	lastAIRequest   map[chat.ID]time.Time
 }
 
 func New(
@@ -52,13 +53,13 @@ func New(
 		aiRateLimit:     aiRateLimit,
 		maxPromptLength: maxPromptLength,
 		aiLimiter:       make(chan struct{}, maxConcurrentAI),
-		lastAIRequest:   make(map[int64]time.Time),
+		lastAIRequest:   make(map[chat.ID]time.Time),
 		history:         history,
 		users:           users,
 	}
 }
 
-func (s *Service) Process(ctx context.Context, id int64, question string) (string, error) {
+func (s *Service) Process(ctx context.Context, id chat.ID, question string) (string, error) {
 	switch s.state.Get(id) {
 	case state.StateIdle:
 		return "Сначала нажмите кнопку «💬 Консультация».", nil
@@ -90,7 +91,7 @@ func (s *Service) Process(ctx context.Context, id int64, question string) (strin
 	return "", ErrUnknownUserState
 }
 
-func (s *Service) ask(ctx context.Context, id int64, question string) (string, error) {
+func (s *Service) ask(ctx context.Context, id chat.ID, question string) (string, error) {
 	userID, err := s.users.GetOrCreate(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("get or create user: %w", err)
@@ -125,7 +126,7 @@ func (s *Service) ask(ctx context.Context, id int64, question string) (string, e
 	return answer, nil
 }
 
-func (s *Service) canAskAI(id int64, now time.Time) bool {
+func (s *Service) canAskAI(id chat.ID, now time.Time) bool {
 	if s.aiRateLimit <= 0 {
 		return true
 	}
@@ -150,11 +151,11 @@ func (s *Service) canAskAI(id int64, now time.Time) bool {
 	return true
 }
 
-func (s *Service) Start(id int64) {
+func (s *Service) Start(id chat.ID) {
 	s.state.Set(id, state.StateConsultation)
 }
 
-func (s *Service) Reset(ctx context.Context, id int64) error {
+func (s *Service) Reset(ctx context.Context, id chat.ID) error {
 	s.state.Delete(id)
 
 	s.mu.Lock()

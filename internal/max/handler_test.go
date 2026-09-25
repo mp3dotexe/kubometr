@@ -7,6 +7,8 @@ import (
 	"testing"
 	"errors"
 	"context"
+
+	"kubometr/internal/chat"
 )
 
 type mockConsultation struct {
@@ -30,7 +32,7 @@ func TestHandleWebhook_InvalidJSON(t *testing.T) {
 	}
 }
 
-func (m *mockConsultation) Process(ctx context.Context, chatID int64, question string) (string, error) {
+func (m *mockConsultation) Process(ctx context.Context, id chat.ID, question string) (string, error) {
 	return m.answer, m.err
 }
 

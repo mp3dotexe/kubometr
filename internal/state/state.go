@@ -2,6 +2,8 @@ package state
 
 import (
 	"sync"
+
+	"kubometr/internal/chat"
 )
 
 type UserState string
@@ -13,33 +15,33 @@ const (
 
 type StateManager struct {
 	mu     sync.RWMutex
-	states map[int64]UserState
+	states map[chat.ID]UserState
 }
 
 func New() *StateManager {
 	return &StateManager{
-		states: make(map[int64]UserState),
+		states: make(map[chat.ID]UserState),
 	}
 }
 
-func (sm *StateManager) Set(chatID int64, state UserState) {
+func (sm *StateManager) Set(id chat.ID, state UserState) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	sm.states[chatID] = state
+	sm.states[id] = state
 }
 
-func (sm *StateManager) Get(chatID int64) UserState {
+func (sm *StateManager) Get(id chat.ID) UserState {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	state, ok := sm.states[chatID]
+	state, ok := sm.states[id]
 	if !ok {
 		return StateIdle
 	}
 	return state
 }
 
-func (sm *StateManager) Delete(chatID int64) {
+func (sm *StateManager) Delete(id chat.ID) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	delete(sm.states, chatID)
+	delete(sm.states, id)
 }

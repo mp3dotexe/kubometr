@@ -2,8 +2,10 @@ package max
 
 import (
 	"context"
+
+	"kubometr/internal/chat"
 )
 
 type ConsultationProcessor interface {
-	Process(ctx context.Context, chatID int64, question string) (string, error)
+	Process(ctx context.Context, id chat.ID, question string) (string, error)
 }

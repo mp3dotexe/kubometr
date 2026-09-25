@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"kubometr/internal/chat"
+
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -22,7 +24,7 @@ func (t *Telegram) HandleStart(ctx context.Context, b *bot.Bot, update *models.U
 	}
 
 	chatID := update.Message.Chat.ID
-	if err := t.consultation.Reset(ctx, chatID); err != nil {
+	if err := t.consultation.Reset(ctx, chatRef(chatID)); err != nil {
 		slog.ErrorContext(ctx, "reset consultation", "chat_id", chatID, "error", err)
 	}
 
@@ -79,7 +81,7 @@ func (t *Telegram) HandleConsultation(ctx context.Context, b *bot.Bot, update *m
 	}
 
 	chatID := update.Message.Chat.ID
-	t.consultation.Start(chatID)
+	t.consultation.Start(chatRef(chatID))
 
 	_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID: chatID,
@@ -121,7 +123,7 @@ func (t *Telegram) HandleMessage(ctx context.Context, b *bot.Bot, update *models
 	chatID := update.Message.Chat.ID
 	question := update.Message.Text
 
-	answer, err := t.consultation.Process(ctx, chatID, question)
+	answer, err := t.consultation.Process(ctx, chatRef(chatID), question)
 	if err != nil {
 		slog.ErrorContext(ctx, "process consultation", "chat_id", chatID, "error", err)
 
@@ -144,7 +146,7 @@ func (t *Telegram) HandleMessage(ctx context.Context, b *bot.Bot, update *models
 }
 
 func (t *Telegram) sendText(ctx context.Context, b *bot.Bot, chatID int64, text string) error {
-	for _, part := range splitMessage(text, telegramMessageLimit) {
+	for _, part := range chat.SplitText(text, telegramMessageLimit) {
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: chatID,
 			Text:   part,
@@ -157,21 +159,6 @@ func (t *Telegram) sendText(ctx context.Context, b *bot.Bot, chatID int64, text 
 	return nil
 }
 
-func splitMessage(text string, limit int) []string {
-	if text == "" {
-		return []string{""}
-	}
-	if limit <= 0 {
-		return []string{text}
-	}
-
-	runes := []rune(text)
-	parts := make([]string, 0, (len(runes)/limit)+1)
-	for len(runes) > limit {
-		parts = append(parts, string(runes[:limit]))
-		runes = runes[limit:]
-	}
-	parts = append(parts, string(runes))
-
-	return parts
+func chatRef(chatID int64) chat.ID {
+	return chat.ID{Platform: chat.Telegram, ChatID: chatID}
 }

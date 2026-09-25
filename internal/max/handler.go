@@ -4,6 +4,8 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
+
+	"kubometr/internal/chat"
 )
 
 type Handler struct {
@@ -56,9 +58,9 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	var chatID int64 = update.Message.Recipient.ChatID
+	id := chat.ID{Platform: chat.MAX, ChatID: update.Message.Recipient.ChatID}
 
-	answer, err := h.consultation.Process(ctx, chatID, question)
+	answer, err := h.consultation.Process(ctx, id, question)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Internal Server Error"))
