@@ -33,3 +33,21 @@ func TestCanAskAI_RateLimit(t *testing.T) {
 		t.Errorf("expected true on fourth call, got false")
 	}
 }
+
+func TestCanAskAI_PrunesOldEntries(t *testing.T) {
+	s := &Service{
+		aiRateLimit:   time.Second,
+		lastAIRequest: make(map[int64]time.Time),
+	}
+
+	old := time.Now()
+	for i := range rateLimitPruneThreshold {
+		s.lastAIRequest[int64(i)] = old
+	}
+
+	s.canAskAI(-1, old.Add(time.Minute))
+
+	if len(s.lastAIRequest) != 1 {
+		t.Fatalf("map size = %d, want 1 after pruning", len(s.lastAIRequest))
+	}
+}
