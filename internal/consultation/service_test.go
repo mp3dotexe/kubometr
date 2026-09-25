@@ -130,7 +130,8 @@ func TestProcessRejectsBadInput(t *testing.T) {
 }
 
 func TestProcessSavesDialog(t *testing.T) {
-	d := newTestService("  Нужна цементно-песчаная смесь.  ")
+	// Bold markers are stripped both from the reply and from the history.
+	d := newTestService("  Нужна **цементно-песчаная** смесь.  ")
 	d.service.Start(testChat)
 
 	answer, err := d.service.Process(context.Background(), testChat, " Хочу залить стяжку ")

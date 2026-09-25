@@ -114,7 +114,10 @@ func (s *Service) ask(ctx context.Context, id chat.ID, question string) (string,
 		return "", fmt.Errorf("ask ai: %w", err)
 	}
 
-	answer = strings.TrimSpace(answer)
+	// Messengers get plain text, so bold markers would show up as is. Models
+	// don't always follow the prompt, and a stored answer with them would
+	// teach the model to keep using them.
+	answer = strings.TrimSpace(strings.ReplaceAll(answer, "**", ""))
 	if answer == "" {
 		return "AI-консультант вернул пустой ответ. Попробуйте переформулировать вопрос.", nil
 	}
