@@ -7,9 +7,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/joho/godotenv"
 )
+
+// defaultAIModels are free OpenRouter models tried in order. Free models get
+// rate-limited or withdrawn without notice, hence several of them.
+var defaultAIModels = []string{
+	"nvidia/nemotron-3-super-120b-a12b:free",
+	"qwen/qwen3.8-27b:free",
+	"google/gemma-4-31b-it:free",
+}
 
 type Config struct {
 	BotToken         string
@@ -20,8 +29,9 @@ type Config struct {
 	MaxPort          int
 	AIAPIKey         string
 	AIBaseURL        string
-	AIModel          string
+	AIModels         []string
 	AITimeout        time.Duration
+	AIModelTimeout   time.Duration
 	AIRateLimit      time.Duration
 	MaxPromptLength  int
 	MaxConcurrentAI  int
@@ -61,6 +71,11 @@ func Load() (Config, error) {
 	}
 
 	aiTimeout, err := durationFromEnv("AI_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+
+	aiModelTimeout, err := durationFromEnv("AI_MODEL_TIMEOUT", 20*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
@@ -114,8 +129,9 @@ func Load() (Config, error) {
 		MaxPort:          maxPort,
 		AIAPIKey:         aiAPIKey,
 		AIBaseURL:        stringFromEnv("AI_BASE_URL", "https://openrouter.ai/api/v1"),
-		AIModel:          stringFromEnv("AI_MODEL", "openai/gpt-oss-20b:free"),
+		AIModels:         listFromEnv("AI_MODEL", defaultAIModels),
 		AITimeout:        aiTimeout,
+		AIModelTimeout:   aiModelTimeout,
 		AIRateLimit:      aiRateLimit,
 		MaxPromptLength:  maxPromptLength,
 		MaxConcurrentAI:  maxConcurrentAI,
@@ -125,6 +141,14 @@ func Load() (Config, error) {
 		PostgresPassword: password,
 		PostgresDB:       database,
 	}, nil
+}
+
+func listFromEnv(key string, fallback []string) []string {
+	values := strings.FieldsFunc(os.Getenv(key), func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+	if len(values) == 0 {
+		return fallback
+	}
+	return values
 }
 
 func stringFromEnv(key, fallback string) string {

@@ -51,7 +51,7 @@ func Run() error {
 		return fmt.Errorf("migrate database: %w", err)
 	}
 
-	a, err := ai.New(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModel)
+	a, err := ai.New(cfg.AIAPIKey, cfg.AIBaseURL, cfg.AIModels, cfg.AIModelTimeout)
 	if err != nil {
 		return fmt.Errorf("create ai client: %w", err)
 	}

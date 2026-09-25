@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ func setRequired(t *testing.T) {
 	t.Setenv("MAX_TOKEN", "")
 	t.Setenv("MAX_WEBHOOK_SECRET", "")
 	t.Setenv("OPENROUTER_API_KEY", "api-key")
+	t.Setenv("AI_MODEL", "")
 	t.Setenv("POSTGRES_USER", "postgres")
 	t.Setenv("POSTGRES_PASSWORD", "password")
 	t.Setenv("POSTGRES_DB", "kubometr_db")
@@ -36,11 +38,14 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.AIBaseURL != "https://openrouter.ai/api/v1" {
 		t.Fatalf("AIBaseURL = %q", cfg.AIBaseURL)
 	}
-	if cfg.AIModel != "openai/gpt-oss-20b:free" {
-		t.Fatalf("AIModel = %q", cfg.AIModel)
+	if !slices.Equal(cfg.AIModels, defaultAIModels) {
+		t.Fatalf("AIModels = %q", cfg.AIModels)
 	}
 	if cfg.AITimeout != 30*time.Second {
 		t.Fatalf("AITimeout = %v", cfg.AITimeout)
+	}
+	if cfg.AIModelTimeout != 20*time.Second {
+		t.Fatalf("AIModelTimeout = %v", cfg.AIModelTimeout)
 	}
 	if cfg.AIRateLimit != 3*time.Second {
 		t.Fatalf("AIRateLimit = %v", cfg.AIRateLimit)
@@ -102,5 +107,27 @@ func TestLoadMaxOnly(t *testing.T) {
 	}
 	if cfg.MaxWebhookURL != "https://example.com/max/webhook" || cfg.MaxPort != 9090 {
 		t.Fatalf("webhook = %q, port = %d", cfg.MaxWebhookURL, cfg.MaxPort)
+	}
+}
+
+func TestLoadAIModelList(t *testing.T) {
+	cases := map[string][]string{
+		"openai/gpt-oss-20b": {"openai/gpt-oss-20b"},
+		" a , b ,, c ":       {"a", "b", "c"},
+		"x:free,y:free":      {"x:free", "y:free"},
+		" , ":                defaultAIModels,
+	}
+
+	for value, want := range cases {
+		setRequired(t)
+		t.Setenv("AI_MODEL", value)
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("AI_MODEL=%q: Load() error = %v", value, err)
+		}
+		if !slices.Equal(cfg.AIModels, want) {
+			t.Errorf("AI_MODEL=%q: AIModels = %q, want %q", value, cfg.AIModels, want)
+		}
 	}
 }
