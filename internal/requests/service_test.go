@@ -55,6 +55,8 @@ type sent struct {
 	text string
 }
 
+const testItems = "Итого к заказу — утепление балкона 6 м²:\n• Технониколь, ЭППС 50 мм или аналог — 2 упаковки"
+
 func newTestService(dialog fakeHistory, managerErr error) (*Service, *fakeRepo, *[]Request, *[]sent) {
 	repo := &fakeRepo{}
 	var toManager []Request
@@ -72,11 +74,14 @@ func newTestService(dialog fakeHistory, managerErr error) (*Service, *fakeRepo, 
 	return s, repo, &toManager, &toClient
 }
 
+const finalAnswer = "Для балкона лучше ЭППС: не боится влаги.\n\n" + testItems + "  \n\n" +
+	"Если всё подходит, нажмите «📝 Оформить заявку»."
+
 var dialog = fakeHistory{
 	{Role: history.UserRole, Text: "Нужно утеплить балкон"},
 	{Role: history.AIRole, Text: "Какая площадь?"},
 	{Role: history.UserRole, Text: "6 квадратов"},
-	{Role: history.AIRole, Text: "Возьмите пеноплекс 50 мм, 2 упаковки."},
+	{Role: history.AIRole, Text: finalAnswer},
 }
 
 func TestSubmitBuildsRequestFromDialog(t *testing.T) {
@@ -86,14 +91,14 @@ func TestSubmitBuildsRequestFromDialog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Submit() error = %v", err)
 	}
-	if !strings.Contains(reply, "№1") || !strings.Contains(reply, "+79991234567") {
+	if !strings.Contains(reply, "№1") || !strings.Contains(reply, "+79991234567") || !strings.Contains(reply, testItems) {
 		t.Fatalf("reply = %q", reply)
 	}
 
 	want := Request{
-		ID: 1, Client: client, Phone: "+79991234567", Status: StatusNew,
+		ID: 1, Client: client, Phone: "+79991234567", Status: StatusNew, Items: testItems,
 		Question: "• Нужно утеплить балкон\n• 6 квадратов",
-		Answer:   "Возьмите пеноплекс 50 мм, 2 упаковки.",
+		Answer:   finalAnswer,
 	}
 	got := repo.created[0]
 	got.CreatedAt = time.Time{}
@@ -102,6 +107,42 @@ func TestSubmitBuildsRequestFromDialog(t *testing.T) {
 	}
 	if len(*toManager) != 1 || (*toManager)[0].ID != 1 {
 		t.Fatalf("manager got %+v", *toManager)
+	}
+}
+
+func TestSubmitTakesLatestOrder(t *testing.T) {
+	changed := append(slices.Clone(dialog),
+		history.Message{Role: history.UserRole, Text: "А можно минвату?"},
+		history.Message{Role: history.AIRole, Text: "Можно.\n\nИтого к заказу — утепление балкона 6 м²:\n\n- Knauf, минвата 50 мм или аналог — 1 упаковка\nЕсли всё подходит, нажмите кнопку."},
+		history.Message{Role: history.UserRole, Text: "Спасибо"},
+		history.Message{Role: history.AIRole, Text: "Пожалуйста! Итого к заказу остаётся прежним."},
+	)
+	s, repo, _, _ := newTestService(changed, nil)
+
+	if _, err := s.Submit(context.Background(), client, "+79991234567"); err != nil {
+		t.Fatal(err)
+	}
+	// The changed list wins; a later mention without a list doesn't count,
+	// and the text right after the list isn't part of it.
+	want := "Итого к заказу — утепление балкона 6 м²:\n- Knauf, минвата 50 мм или аналог — 1 упаковка"
+	if got := repo.created[0].Items; got != want {
+		t.Fatalf("Items = %q, want %q", got, want)
+	}
+}
+
+func TestSubmitWithoutOrder(t *testing.T) {
+	s, repo, toManager, _ := newTestService(dialog[:2], nil)
+
+	reply, err := s.Submit(context.Background(), client, "+79991234567")
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	// The manager still gets the request and reads the dialog.
+	if len(repo.created) != 1 || repo.created[0].Items != "" || len(*toManager) != 1 {
+		t.Fatalf("created = %+v, manager got %d", repo.created, len(*toManager))
+	}
+	if !strings.Contains(reply, "принята") || strings.Contains(reply, "Итого") {
+		t.Fatalf("reply = %q", reply)
 	}
 }
 
@@ -188,8 +229,21 @@ func TestListShowsStatusAndPreview(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	// 22:30 UTC is already the next day in Moscow.
-	want := "№1 от 26.09.2026 — 🆕 Принята\nНужно утеплить балкон"
+	want := "№1 от 26.09.2026 — 🆕 Принята\nутепление балкона 6 м²"
 	if !strings.Contains(list, want) {
 		t.Fatalf("list = %q, want it to contain %q", list, want)
+	}
+}
+
+func TestManagerTextShowsAnswerOnlyWithoutItems(t *testing.T) {
+	req := Request{ID: 1, Phone: "+79991234567", Question: "• балкон", Answer: "Возьмите пеноплекс.", Items: testItems}
+	// The items are a quote of the answer, so the answer itself is left out.
+	if text := req.ManagerText(); !strings.Contains(text, testItems) || strings.Contains(text, "Консультант ответил") {
+		t.Fatalf("with items: %q", text)
+	}
+
+	req.Items = ""
+	if text := req.ManagerText(); !strings.Contains(text, "Консультант ответил:\nВозьмите пеноплекс.") {
+		t.Fatalf("without items: %q", text)
 	}
 }

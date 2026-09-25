@@ -20,13 +20,13 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 }
 
 const createQuery = `
-	INSERT INTO requests (user_id, phone, question, answer)
-	VALUES ($1, $2, $3, $4)
+	INSERT INTO requests (user_id, phone, items, question, answer)
+	VALUES ($1, $2, $3, $4, $5)
 	RETURNING id, status, created_at
 `
 
 const listQuery = `
-	SELECT id, phone, question, answer, status, created_at
+	SELECT id, phone, items, question, answer, status, created_at
 	FROM requests
 	WHERE user_id = $1
 	ORDER BY id DESC
@@ -41,11 +41,11 @@ const setStatusQuery = `
 	SET status = $2
 	FROM users u
 	WHERE r.id = $1 AND r.status = ANY($3) AND u.id = r.user_id
-	RETURNING r.id, r.phone, r.question, r.answer, r.status, r.created_at, u.platform, u.external_id
+	RETURNING r.id, r.phone, r.items, r.question, r.answer, r.status, r.created_at, u.platform, u.external_id
 `
 
 func (r *Repository) Create(ctx context.Context, userID int64, req Request) (Request, error) {
-	err := r.pool.QueryRow(ctx, createQuery, userID, req.Phone, req.Question, req.Answer).
+	err := r.pool.QueryRow(ctx, createQuery, userID, req.Phone, req.Items, req.Question, req.Answer).
 		Scan(&req.ID, &req.Status, &req.CreatedAt)
 	if err != nil {
 		return Request{}, fmt.Errorf("insert request: %w", err)
@@ -60,7 +60,7 @@ func (r *Repository) List(ctx context.Context, userID int64, limit int) ([]Reque
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Request, error) {
 		var req Request
-		err := row.Scan(&req.ID, &req.Phone, &req.Question, &req.Answer, &req.Status, &req.CreatedAt)
+		err := row.Scan(&req.ID, &req.Phone, &req.Items, &req.Question, &req.Answer, &req.Status, &req.CreatedAt)
 		return req, err
 	})
 }
@@ -69,7 +69,7 @@ func (r *Repository) List(ctx context.Context, userID int64, limit int) ([]Reque
 // when the request doesn't exist or can't move to this status.
 func (r *Repository) SetStatus(ctx context.Context, id int64, status Status) (req Request, ok bool, err error) {
 	err = r.pool.QueryRow(ctx, setStatusQuery, id, status, status.previous()).Scan(
-		&req.ID, &req.Phone, &req.Question, &req.Answer, &req.Status, &req.CreatedAt,
+		&req.ID, &req.Phone, &req.Items, &req.Question, &req.Answer, &req.Status, &req.CreatedAt,
 		&req.Client.Platform, &req.Client.ChatID,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {

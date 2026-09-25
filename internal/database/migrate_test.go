@@ -85,8 +85,8 @@ func TestMigrateAppliesAllAndIsIdempotent(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT version FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 4 {
-		t.Fatalf("version = %d, want 4", version)
+	if version != 5 {
+		t.Fatalf("version = %d, want 5", version)
 	}
 
 	// Same external ID on different platforms must be two different users.

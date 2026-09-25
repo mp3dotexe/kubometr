@@ -25,7 +25,7 @@ func TestRepositoryCreateListSetStatus(t *testing.T) {
 	}
 
 	repo := NewRepository(pool)
-	created, err := repo.Create(ctx, userID, Request{Phone: "+79991234567", Question: "• балкон", Answer: "пеноплекс"})
+	created, err := repo.Create(ctx, userID, Request{Phone: "+79991234567", Items: "• пеноплекс", Question: "• балкон", Answer: "пеноплекс"})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -37,7 +37,7 @@ func TestRepositoryCreateListSetStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if len(list) != 1 || list[0].ID != created.ID || list[0].Question != "• балкон" {
+	if len(list) != 1 || list[0].ID != created.ID || list[0].Items != "• пеноплекс" || list[0].Question != "• балкон" {
 		t.Fatalf("List() = %+v", list)
 	}
 

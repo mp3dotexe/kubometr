@@ -1,6 +1,6 @@
 // Package requests turns a consultation into a request for a manager: the
-// client leaves a phone number, the manager gets the dialog and moves the
-// request through its statuses, and the client can see them.
+// client leaves a phone number, the manager gets what the client decided to
+// buy and moves the request through its statuses, and the client sees them.
 package requests
 
 import (
@@ -85,6 +85,7 @@ type Request struct {
 	ID        int64
 	Client    chat.ID
 	Phone     string
+	Items     string // the consultant's final list the client agreed to
 	Question  string // the client's messages from the dialog
 	Answer    string // the consultant's last answer
 	Status    Status
@@ -95,6 +96,9 @@ const (
 	historyLimit = 20
 	listLimit    = 10
 )
+
+// orderHeader starts the consultant's final list, see the consultant prompt.
+const orderHeader = "Итого к заказу"
 
 // moscow is used for request dates: the store works in Moscow time.
 var moscow = time.FixedZone("MSK", 3*60*60)
@@ -179,11 +183,16 @@ func (s *Service) Submit(ctx context.Context, id chat.ID, phone string) (string,
 		slog.ErrorContext(ctx, "notify manager", "request_id", req.ID, "error", err)
 	}
 
-	return fmt.Sprintf("✅ Заявка №%d принята.\n\nМенеджер свяжется с вами по номеру %s. "+
-		"Статус заявки можно посмотреть в разделе «🧾 Мои заявки».", req.ID, phone), nil
+	reply := fmt.Sprintf("✅ Заявка №%d принята.", req.ID)
+	if req.Items != "" {
+		reply += "\n\n" + req.Items
+	}
+	return reply + fmt.Sprintf("\n\nМенеджер позвонит вам по номеру %s, уточнит цены и наличие. "+
+		"Статус заявки — в разделе «🧾 Мои заявки».", phone), nil
 }
 
-// fromDialog collects the client's messages and the consultant's last answer.
+// fromDialog collects the client's messages, the consultant's last answer
+// and the latest final list the client agreed to.
 func fromDialog(messages []history.Message) Request {
 	var questions []string
 	var req Request
@@ -193,10 +202,37 @@ func fromDialog(messages []history.Message) Request {
 			questions = append(questions, "• "+msg.Text)
 		case history.AIRole:
 			req.Answer = msg.Text
+			if order := orderFrom(msg.Text); order != "" {
+				req.Items = order
+			}
 		}
 	}
 	req.Question = strings.Join(questions, "\n")
 	return req
+}
+
+// orderFrom cuts the final list out of a consultant answer: the header line
+// and the list items right after it. It returns "" when there is none.
+func orderFrom(answer string) string {
+	start := strings.LastIndex(answer, orderHeader)
+	if start < 0 {
+		return ""
+	}
+
+	lines := strings.Split(answer[start:], "\n")
+	order := []string{strings.TrimSpace(lines[0])}
+	for _, line := range lines[1:] {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "•") || strings.HasPrefix(line, "-") {
+			order = append(order, line)
+		} else if line != "" || len(order) > 1 {
+			break // the text after the list
+		}
+	}
+	if len(order) == 1 {
+		return ""
+	}
+	return strings.Join(order, "\n")
 }
 
 // List returns the client's latest requests as a message.
@@ -218,15 +254,27 @@ func (s *Service) List(ctx context.Context, id chat.ID) (string, error) {
 	var b strings.Builder
 	b.WriteString("🧾 Ваши заявки:")
 	for _, req := range list {
+		summary := req.Items
+		if summary == "" {
+			summary = req.Question
+		}
 		fmt.Fprintf(&b, "\n\n№%d от %s — %s\n%s",
-			req.ID, req.CreatedAt.In(moscow).Format("02.01.2006"), req.Status.Title(), preview(req.Question))
+			req.ID, req.CreatedAt.In(moscow).Format("02.01.2006"), req.Status.Title(), preview(summary))
 	}
 	return b.String(), nil
 }
 
-// preview shortens the client's first message for the request list.
-func preview(question string) string {
-	first, _, _ := strings.Cut(question, "\n")
+// preview shortens the task from the list header ("Итого к заказу — стяжка
+// пола 15 м²:"), or the first line of the list or question, for the request
+// list.
+func preview(summary string) string {
+	first, rest, _ := strings.Cut(summary, "\n")
+	if task, ok := strings.CutPrefix(first, orderHeader); ok {
+		first = strings.Trim(task, " —-:")
+		if first == "" {
+			first, _, _ = strings.Cut(rest, "\n")
+		}
+	}
 	first = strings.TrimPrefix(first, "• ")
 	if runes := []rune(first); len(runes) > 80 {
 		return string(runes[:80]) + "…"
@@ -249,11 +297,18 @@ func (s *Service) SetStatus(ctx context.Context, id int64, status Status) (Reque
 	return req, true, nil
 }
 
-// ManagerText formats a request for the manager.
+// ManagerText formats a request for the manager: the task and the items
+// first, the dialog below for context.
 func (r Request) ManagerText() string {
-	text := fmt.Sprintf("📝 Заявка №%d — %s\n\nТелефон: %s\nМессенджер: %s\n\nКлиент писал:\n%s",
-		r.ID, r.Status.Title(), r.Phone, r.Client.Platform, r.Question)
-	if r.Answer != "" {
+	text := fmt.Sprintf("📝 Заявка №%d — %s\n\nТелефон: %s\nМессенджер: %s",
+		r.ID, r.Status.Title(), r.Phone, r.Client.Platform)
+	if r.Items != "" {
+		text += "\n\n" + r.Items
+	}
+	text += "\n\nКлиент писал:\n" + r.Question
+	// The items already sum up the consultant's answer; without them it is
+	// the manager's best clue to what the client wants.
+	if r.Items == "" && r.Answer != "" {
 		text += "\n\nКонсультант ответил:\n" + r.Answer
 	}
 	return text
