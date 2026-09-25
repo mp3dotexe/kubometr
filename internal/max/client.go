@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	maxbot "github.com/max-messenger/max-bot-api-client-go"
+	"github.com/max-messenger/max-bot-api-client-go/schemes"
 )
 
 type Client struct {
@@ -26,6 +27,17 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) err
 	err := c.api.Messages.Send(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("send message: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) SendTyping(ctx context.Context, chatID int64) error {
+	result, err := c.api.Chats.SendAction(ctx, chatID, schemes.TYPING_ON)
+	if err != nil {
+		return fmt.Errorf("send typing: %w", err)
+	}
+	if !result.Success {
+		return errors.New("send typing: " + result.Message)
 	}
 	return nil
 }

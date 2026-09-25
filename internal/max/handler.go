@@ -126,7 +126,11 @@ func (h *Handler) handleMessage(ctx context.Context, id chat.ID, text string) {
 	// consultant. This also covers chats whose state was lost on restart.
 	h.consultation.Start(id)
 
+	stopTyping := chat.KeepTyping(ctx, chat.TypingInterval, func(ctx context.Context) error {
+		return h.sender.SendTyping(ctx, id.ChatID)
+	})
 	answer, err := h.consultation.Process(ctx, id, text)
+	stopTyping()
 	if err != nil {
 		slog.ErrorContext(ctx, "process consultation", "platform", id.Platform, "chat_id", id.ChatID, "error", err)
 		h.send(ctx, id, fallbackText)

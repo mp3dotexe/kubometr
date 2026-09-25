@@ -50,14 +50,23 @@ type sentMessage struct {
 }
 
 type mockSender struct {
-	mu   sync.Mutex
-	sent []sentMessage
+	mu     sync.Mutex
+	sent   []sentMessage
+	events []string
+}
+
+func (m *mockSender) SendTyping(_ context.Context, chatID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, "typing")
+	return nil
 }
 
 func (m *mockSender) SendMessage(_ context.Context, chatID int64, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sent = append(m.sent, sentMessage{chatID: chatID, text: text})
+	m.events = append(m.events, "message")
 	return nil
 }
 
@@ -218,5 +227,15 @@ func TestHandleWebhook_IgnoresIrrelevantUpdates(t *testing.T) {
 		if len(consultation.processed) != 0 || len(sender.sent) != 0 {
 			t.Errorf("%s: processed = %v, sent = %v", name, consultation.processed, sender.sent)
 		}
+	}
+}
+
+func TestHandleWebhook_TypingBeforeAnswer(t *testing.T) {
+	h, sender := newTestHandler(&mockConsultation{answer: "test answer"})
+
+	serve(h, http.MethodPost, testSecret, messageUpdate("вопрос"))
+
+	if len(sender.events) < 2 || sender.events[0] != "typing" || sender.events[len(sender.events)-1] != "message" {
+		t.Fatalf("events = %v, want typing first and the answer last", sender.events)
 	}
 }

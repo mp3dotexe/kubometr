@@ -14,4 +14,5 @@ type ConsultationService interface {
 
 type MessageSender interface {
 	SendMessage(ctx context.Context, chatID int64, text string) error
+	SendTyping(ctx context.Context, chatID int64) error
 }

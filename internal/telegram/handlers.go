@@ -123,7 +123,16 @@ func (t *Telegram) HandleMessage(ctx context.Context, b *bot.Bot, update *models
 	chatID := update.Message.Chat.ID
 	question := update.Message.Text
 
+	stopTyping := chat.KeepTyping(ctx, chat.TypingInterval, func(ctx context.Context) error {
+		_, err := b.SendChatAction(ctx, &bot.SendChatActionParams{
+			ChatID: chatID,
+			Action: models.ChatActionTyping,
+		})
+		return err
+	})
 	answer, err := t.consultation.Process(ctx, chatRef(chatID), question)
+	stopTyping()
+
 	if err != nil {
 		slog.ErrorContext(ctx, "process consultation", "chat_id", chatID, "error", err)
 
